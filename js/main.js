@@ -14,7 +14,7 @@ import { sfx, unlockAudio, setMuted, isMuted } from './sound.js';
 import { setMapTheme, setIntensity, ensureStarted, setMusicMuted } from './music.js';
 import { distToPath, dist } from '../shared/util.js';
 import { buildMap, mapList, DEFAULT_MAP } from '../shared/map.js';
-import { COLONY_COLORS, cleanColor, resolveColors } from '../shared/data/board.js';
+import { COLONY_COLORS, cleanColor, resolveColors, TUNING } from '../shared/data/board.js';
 import { teamTint, setColonyColors } from './colors.js';
 import { RAIDERS, DEFENDERS, DEFENDER_IDS, RAIDER_IDS, LOADOUT_SIZE, DEFAULT_LOADOUT, cleanLoadout } from '../shared/data/units.js';
 import { QUEENS, QUEEN_IDS, HERO, cleanQueen } from '../shared/data/heroes.js';
@@ -681,20 +681,16 @@ function wireDriver(seatSpecs, netIndex) {
   driver.on('emote', (m) => showEmote(m.team, m.e));
   buildEmoteBar(seatSpecs[0]?.seat ?? 0);
 
-  // colony names on the nest bar
-  if (full) {
-    // a colony can be two people, so name it after everyone holding it rather
-    // than after whoever happened to sit down first
-    const colonyName = (team) => {
-      const names = full.players.filter((p) => p.team === team).map((p) => p.name).filter(Boolean);
-      if (!names.length) return teamTint(team).name;
-      const joined = names.join(' & ');
-      return joined.length <= 18 ? joined : `${names[0]} +${names.length - 1}`;
-    };
-    $('#nest-0 .nest-name').textContent = colonyName(0);
-    $('#nest-1 .nest-name').textContent = colonyName(1);
-    for (const h of huds) h.padIdx = full.players.find((p) => p.i === h.meIndex)?.pads || [];
-  }
+  // a colony can be two people, so name it after everyone holding it rather
+  // than after whoever happened to sit down first
+  const colonyName = (team) => {
+    const names = full?.players.filter((p) => p.team === team).map((p) => p.name).filter(Boolean) || [];
+    if (!names.length) return teamTint(team).name;
+    const joined = names.join(' & ');
+    return joined.length <= 18 ? joined : `${names[0]} +${names.length - 1}`;
+  };
+  buildNestBar(full?.teams || MAP.nests.length, seatSpecs[0]?.team ?? 0, colonyName);
+  if (full) for (const h of huds) h.padIdx = full.players.find((p) => p.i === h.meIndex)?.pads || [];
 
   show('game');
   // the audio module keeps its own theme names from Grubs TD; give each board a
@@ -706,7 +702,123 @@ function wireDriver(seatSpecs, netIndex) {
   loop(lastT);
 }
 
-let lastHp = [100, 100];
+// ------------------------------------------------------------- the nest bar
+//
+// One readout per colony, built from the match rather than from markup. It used
+// to be two hardcoded divs, so a five-colony free-for-all named two colonies and
+// silently dropped three.
+//
+// TWO COLONIES IS A DUEL and keeps the shape it has always had: you on the left,
+// them on the right, the clock held between you. Three or more is not a duel and
+// does not pretend to be one. The clock moves to the head of the row and the
+// colonies rank out from it in seat order, which on a ring board is the order
+// their nests sit around the board.
+//
+// Colours come from teamTint(), never from TEAM_TINT or the --ember/--frost
+// role variables: those two are "you" and "somebody else" and pin every readout
+// past the second to the wrong colony.
+
+let nests = [];                                  // one readout per colony, in team order
+let clockEl = null, clockNoteEl = null;
+let lastHp = [];                                 // what each nest had last frame, for the flash
+
+function buildNestBar(teams, mineTeam, colonyName) {
+  const bar = $('#nestbar');
+  const many = teams > 2;                        // a rank, rather than a face-off
+  bar.className = `nestbar${many ? ' many' : ''}`;
+  bar.innerHTML = '';
+  nests = [];
+  lastHp = new Array(teams).fill(TUNING.nestHp);
+
+  clockEl = document.createElement('span');
+  clockEl.id = 'clock';
+  clockEl.textContent = '0:00';
+  clockNoteEl = document.createElement('small');
+  clockNoteEl.id = 'clock-note';
+  const clock = document.createElement('div');
+  clock.className = 'clock';
+  clock.append(clockEl, clockNoteEl);
+
+  const readout = (team) => {
+    // the right-hand colony of a duel reads inwards, so its parts run backwards
+    const mirrored = !many && team === 1;
+    const el = document.createElement('div');
+    el.className = 'nest'
+      + (mirrored ? ' right' : '')
+      + (many && team === mineTeam ? ' mine' : '');
+    // the one colour this readout wears, and the only place CSS learns it
+    el.style.setProperty('--tint', teamTint(team).accent);
+    const name = document.createElement('span');
+    name.className = 'nest-name';
+    // yours is the honey plate the rest of the game uses for "this one is
+    // yours", and a caret so it is not colour alone that says so
+    if (many && team === mineTeam) {
+      name.insertAdjacentHTML('beforeend',
+        '<span class="sr-only">Your colony: </span><i class="you" aria-hidden="true">▸</i>');
+    }
+    name.append(colonyName(team));
+    const trough = document.createElement('div');
+    trough.className = 'bar';
+    // the bar draws the number that is sitting right beside it, so a screen
+    // reader is better off being told the number once
+    trough.setAttribute('aria-hidden', 'true');
+    trough.innerHTML = '<i></i>';
+    const hp = document.createElement('span');
+    hp.className = 'nest-hp';
+    hp.textContent = TUNING.nestHp;
+    el.append(...(mirrored ? [hp, trough, name] : [name, trough, hp]));
+
+    el.hpEl = hp;
+    el.fillEl = trough.firstElementChild;
+    el.wasOut = false;
+    nests.push(el);
+    return el;
+  };
+
+  if (many) {
+    // the clock leads the row and the colonies rank out from it, which holds
+    // three across on a phone and all six on a desk without changing shape
+    const rank = document.createElement('div');
+    rank.className = 'nests';
+    for (let t = 0; t < teams; t++) rank.append(readout(t));
+    bar.append(clock, rank);
+  } else {
+    bar.append(readout(0), clock, readout(1));
+  }
+}
+
+/** Per frame: health, the word for a colony that has gone, and the hurt flash. */
+function paintNestBar(view) {
+  const bitten = [];
+  for (let t = 0; t < nests.length; t++) {
+    const el = nests[t];
+    const hp = Math.max(0, view.nestHp[t] ?? 0);
+    const out = !!view.nestOut?.[t];
+    if (out !== el.wasOut) { el.classList.toggle('out', out); el.wasOut = out; }
+    // a colony that has fallen is out of the match, not sitting on nought
+    const label = out ? 'Out' : String(Math.ceil(hp));
+    if (el.hpEl.textContent !== label) el.hpEl.textContent = label;
+    // nest health is not a percentage: it starts at TUNING.nestHp, which has
+    // been retuned five times. Reading it as one left the bar pinned full for
+    // the first 230 points of damage every single match.
+    el.fillEl.style.transform = `scaleX(${hp / TUNING.nestHp})`;
+    if (hp < lastHp[t] - 0.5 && !out) bitten.push(el);
+    lastHp[t] = hp;
+  }
+
+  // restarting a CSS animation costs a forced layout, so all the colonies that
+  // were bitten this frame share one rather than taking six between them
+  if (bitten.length) {
+    for (const el of bitten) el.classList.remove('hurt');
+    void nests[0].offsetWidth;
+    for (const el of bitten) el.classList.add('hurt');
+  }
+
+  const s = Math.floor(view.t);
+  clockEl.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  clockNoteEl.textContent = view.t >= TUNING.suddenDeathAt ? 'Sudden death' : '';
+}
+
 function loop(now) {
   raf = requestAnimationFrame(loop);
   const dt = Math.min(0.1, (now - lastT) / 1000);
@@ -719,25 +831,15 @@ function loop(now) {
 
   for (const h of huds) h.update(view, h.meIndex);
 
-  // how far behind you have been: the number worth bragging about
+  // how far behind you have been: the number worth bragging about. The colony
+  // you are behind is whoever is doing best of the rest, which in a duel is the
+  // other one and in a free-for-all is not a number you can derive from yours.
   const meTeam = huds[0]?.team ?? 0;
-  worstDeficit = Math.max(worstDeficit, view.nestHp[1 - meTeam] - view.nestHp[meTeam]);
+  let best = 0;
+  for (let t = 0; t < view.nestHp.length; t++) if (t !== meTeam) best = Math.max(best, view.nestHp[t]);
+  worstDeficit = Math.max(worstDeficit, best - view.nestHp[meTeam]);
 
-  // nest bars
-  for (const t of [0, 1]) {
-    const hp = Math.max(0, view.nestHp[t]);
-    const el = $(`#nest-${t}`);
-    el.querySelector('.nest-hp').textContent = Math.ceil(hp);
-    el.querySelector('.bar i').style.width = `${hp}%`;
-    if (hp < lastHp[t] - 0.5) {
-      el.classList.remove('hurt'); void el.offsetWidth; el.classList.add('hurt');
-    }
-    lastHp[t] = hp;
-  }
-
-  const s = Math.floor(view.t);
-  $('#clock').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  $('#clock-note').textContent = view.t >= 480 ? 'Sudden death' : '';
+  paintNestBar(view);
   try { setIntensity(Math.min(3, Math.floor(view.units.length / 9))); } catch { /* audio off */ }
 }
 
@@ -1029,9 +1131,15 @@ window.AR = {
     if (driver.sim.over) driver.finish();
     return driver.sim.t.toFixed(1);
   },
-  /** Paint one frame without a rAF tick. */
+  /**
+   * Paint one frame without a rAF tick. This has to cover the nest bar as well
+   * as the board: it did not, and two defects lived in the bar for months
+   * because the one tool that can see this game in a hidden tab looked straight
+   * past it.
+   */
   paint(dt = 1 / 60) {
     const view = driver?.view?.();
+    if (view && nests.length) paintNestBar(view);
     draw(view, dt, { aimLane: huds[mouseSeat]?.lane ?? 0, aimTeam: huds[mouseSeat]?.team ?? 0 });
     if (view) { for (const h of huds) h.update(view, h.meIndex); }
     return view && { t: view.t, units: view.units.length, defs: view.defs.length, nest: view.nestHp };

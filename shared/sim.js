@@ -1101,6 +1101,11 @@ export class Sim {
       n: this.tick,
       t: Math.round(this.t * 10) / 10,
       hp: this.nestHp.map((h) => Math.round(h * 10) / 10),
+      // A fallen colony is out, not on nought. In a duel the two say the same
+      // thing, but a free-for-all carries on around the colonies it has already
+      // knocked out and the HUD has no other way to tell one from a nest that is
+      // one bite from going.
+      out: this.out.slice(),
       u: this.units.map((u) => [
         u.id, u.t, u.team, u.lane, Math.round(u.d * 10) / 10, Math.round(u.hp),
         (u.slowT > 0 ? 1 : 0) | (this.rallies[u.team][u.lane] > this.t ? 2 : 0)

@@ -962,6 +962,24 @@ test('a snapshot carries everything the client needs to redraw the board', () =>
   assert.equal(sim.snapshot().fx.length, 0, 'fx were not drained after sending');
 });
 
+test('a fallen colony rides the wire as out, not as nought', () => {
+  const n = 4;
+  const sim = new Sim({
+    mode: 'versus', map: 'ring4', seed: 5, wildlife: false,
+    players: Array.from({ length: n }, (_, i) => ({ id: `P${i}`, name: `P${i}`, team: i })),
+  });
+  assert.deepEqual(sim.snapshot().out, [false, false, false, false], 'one flag per colony');
+  sim.nestHp[2] = 0;
+  sim.step(DT);
+  const s = sim.snapshot();
+  // nought and gone look identical in `hp` alone, and the HUD has to tell a
+  // colony that is out of the match from one sitting on its last point
+  assert.equal(s.hp[2], 0);
+  assert.equal(s.out[2], true);
+  assert.deepEqual(s.out, [false, false, true, false], 'a colony falling took somebody else with it');
+  assert.deepEqual(JSON.parse(JSON.stringify(s)).out, s.out, 'out is not JSON-safe');
+});
+
 test('a full state names the map, the players and their pads', () => {
   const id = MAPS[MAPS.length - 1].id;   // any board that is not the default
   const sim = duel({ map: id });

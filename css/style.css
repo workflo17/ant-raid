@@ -56,6 +56,13 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
   outline-offset: 2px;
 }
 .hidden { display: none !important; }
+/* read aloud, never drawn: for the part of a label that a sighted player gets
+   from position or colour instead */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
 
 .screen { position: fixed; inset: 0; display: grid; }
 #screen-title, #screen-lobby, #screen-over { place-items: center; overflow-y: auto; padding: 24px 16px; }
@@ -438,15 +445,34 @@ input {
 
 #screen-game {
   grid-template-rows: auto 1fr auto;
+  /* An implicit `auto` column sizes to the widest child's min-content and
+     overflows a fixed screen rather than being clipped by it. The dock's is
+     406px, so on a 375px phone every row in here, the nest bar included, was
+     being stretched 31px past the edge and cut off. The dock's own shop is
+     built to scroll sideways when it runs out of room; this is what lets it. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding:
     calc(8px + env(safe-area-inset-top)) calc(clamp(6px, 1.5vw, 16px) + env(safe-area-inset-right))
     calc(10px + env(safe-area-inset-bottom)) calc(clamp(6px, 1.5vw, 16px) + env(safe-area-inset-left));
 }
 
+/* ── the nest bar: one readout per colony ──
+   TWO COLONIES IS A DUEL and keeps the layout it has always had: you, the
+   clock, them, reading inwards from both ends. Three to six is a free-for-all
+   and is not a duel: the clock takes the head of the row and the colonies rank
+   out from it. Both shapes are built from the same three parts in the same
+   order, so only the arrangement changes.
+
+   The bar fill reads --tint, set per readout from the colour that colony is
+   actually wearing. It used to read --ember and --frost, which are the roles
+   "you" and "somebody else" and can only ever describe two colonies.          */
+
 .nestbar {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* minmax(0, …), not 1fr: a plain 1fr will not shrink below its contents, and
+     the two names pushed this bar 37px past a 375px phone and off the screen */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: clamp(8px, 2vw, 22px);
   background: var(--cream);
@@ -457,18 +483,74 @@ input {
 }
 .nest { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .nest.right { justify-content: flex-end; }
-.nest-name { font-weight: 800; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
-.nest-hp { font-weight: 800; font-size: 20px; min-width: 2.6ch; text-align: center; font-variant-numeric: tabular-nums; }
+.nest-name {
+  font-weight: 800; font-size: 15px; text-transform: uppercase; letter-spacing: .06em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.nest-hp {
+  font-weight: 800; font-size: 20px; min-width: 2.6ch; flex: none;
+  text-align: center; font-variant-numeric: tabular-nums;
+}
 .nest .bar {
   flex: 1; min-width: 60px; height: 17px;
   background: #e6d8b6; border: 2.5px solid var(--ink); border-radius: 999px; overflow: hidden;
 }
-.nest .bar i { display: block; height: 100%; width: 100%; transition: width .25s ease; }
-.nest.ember .bar i { background: var(--ember); }
-.nest.frost .bar i { background: var(--frost); }
-.nest.right .bar i { margin-left: auto; }
+.nest .bar i {
+  display: block; height: 100%; width: 100%;
+  background: var(--tint, var(--ember));
+  /* scaled rather than resized: width is a layout property and this went from
+     two bars to six, so a transitioning width now reflows the header six times
+     a frame instead of twice. The trough clips it either way. */
+  transform: scaleX(1); transform-origin: left;
+  transition: transform .25s ease;
+}
+/* the right-hand colony of a duel drains back toward its own end */
+.nest.right .bar i { transform-origin: right; }
 .nest.hurt { animation: shove .22s ease; }
 @keyframes shove { 50% { transform: translateX(-4px); } }
+
+/* a colony whose nest has fallen is OUT of the match, not sitting on nought */
+.nest.out { opacity: .55; }
+.nest.out .nest-name { text-decoration: line-through 2px; }
+.nest.out .nest-hp { font-size: 15px; letter-spacing: .04em; }
+
+/* ── three to six: the clock leads, the colonies rank out from it ── */
+
+.nestbar.many { display: flex; align-items: center; gap: 10px; }
+.nestbar.many .clock { flex: none; width: 62px; }
+/* the note wraps rather than widening this column: it appears at 8:00, and a
+   column that grows mid-match would re-flow the whole rank under your thumb */
+.nestbar.many #clock-note { font-size: 9px; line-height: 1.15; }
+.nestbar.many .nests {
+  flex: 1; min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 5px 8px;
+}
+.nestbar.many .nest {
+  display: grid;
+  /* placed rather than auto-flowed: the bar spans both columns, and left to
+     find its own row it lands between the name and the number instead of under
+     the pair of them, which costs a whole third row per readout */
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1px 6px;
+  padding: 3px 8px 4px;
+  border-radius: 9px;
+  line-height: 1.2;
+  background: rgba(43, 26, 16, .055);
+}
+.nestbar.many .nest-name { grid-area: 1 / 1; font-size: 12px; letter-spacing: .04em; }
+.nestbar.many .nest-hp { grid-area: 1 / 2; font-size: 14px; min-width: 0; text-align: right; }
+.nestbar.many .nest .bar {
+  grid-area: 2 / 1 / 3 / -1;
+  min-width: 0; height: 10px; border-width: 2px;
+}
+.nestbar.many .nest.out .nest-hp { font-size: 12px; }
+/* yours wears the honey plate the rest of the game uses for "this one is
+   yours", and a caret with it so colour is not the only thing saying so */
+.nestbar.many .nest.mine { background: var(--honey); }
+.nest-name .you { font-style: normal; margin-right: 3px; }
 
 .clock { display: grid; justify-items: center; line-height: 1; }
 #clock { font-weight: 800; font-size: 22px; font-variant-numeric: tabular-nums; }
@@ -536,7 +618,10 @@ input {
      five shop cards on screen without the shop scrolling: purse 92 + powers 234
      + queen 234 + five 78px cards + gaps. The stage above it is 1248 wide, so
      this still sits inside the board rather than sticking out past it. */
-  flex: 1; max-width: 1100px;
+  /* min-width: 0, or a flex item refuses to go below its own min-content: the
+     dock stayed 406px wide on a 375px phone and hung off both edges. The shop
+     inside it is already built to scroll sideways when it runs out of room. */
+  flex: 1; min-width: 0; max-width: 1100px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -798,7 +883,24 @@ input {
   .nestbar { padding: 5px 8px; gap: 8px; border-radius: 11px; }
   .nest-name { font-size: 12px; }
   .nest-hp { font-size: 17px; }
+  .nest .bar { min-width: 40px; }
   #clock { font-size: 17px; }
+
+  /* six readouts and a clock across 375px: three to a row, two rows. The floor
+     is 84px because a fourth column would need 354 and there are 277 to go at,
+     so the rank cannot flip to two-across and back at sudden death. */
+  .nestbar.many { gap: 8px; }
+  .nestbar.many .clock { width: 56px; }
+  .nestbar.many .nests { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 4px 6px; }
+  /* four will not fit across, so it takes two rows either way: as two and two
+     rather than three and a stray, which buys them all a wider name */
+  .nestbar.many .nests:has(> :nth-child(4):last-child) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .nestbar.many .nest { padding: 2px 6px 3px; gap: 0 4px; border-radius: 7px; }
+  .nestbar.many .nest-name { font-size: 11px; }
+  .nestbar.many .nest-hp { font-size: 12px; }
+  .nestbar.many .nest .bar { height: 8px; }
 
   .hud { padding: 6px 8px; gap: 8px; }
   /* on a phone both of these take a line of their own rather than competing
