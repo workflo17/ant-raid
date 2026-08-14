@@ -1005,6 +1005,33 @@ function onKey(e) {
 
 // ---------------------------------------------------------------- result
 
+/**
+ * What actually happened, rather than what usually happens.
+ *
+ * This line used to be `won ? 'Their nest is rubble' : 'Your nest is rubble'`,
+ * which is a guess that reads right most of the time and is flatly false
+ * whenever the clock decides the match: on any timeout BOTH nests are still
+ * standing, and the loser was told theirs was rubble while looking at a bar
+ * that plainly was not. On a ring that is not even a rare ending, it is a
+ * normal way to lose, and the sudden-death bleed makes it commoner still.
+ *
+ * `out[]` records which nests actually fell, so ask it instead of guessing.
+ */
+function verdictLine(m, res, won, shared) {
+  if (m.winner < 0) return 'Nobody took the crumb';
+  // hot-seat: nobody at the keyboard is "you"
+  if (shared) return `${colonyNameOf?.(m.winner) || teamTint(m.winner).name} takes it`;
+  const out = res?.out || [];
+  if (won) {
+    const restAllFell = out.length && out.every((o, t) => t === res.myTeam || o);
+    if (!restAllFell) return 'You held the most nest';
+    return (res.teams || 2) > 2 ? 'Last colony standing' : 'Their nest is rubble';
+  }
+  if (out[res?.myTeam]) return 'Your nest is rubble';
+  const who = res?.rivalName;
+  return who ? `${who} held more nest` : 'They held more nest';
+}
+
 function showResult(m) {
   show('over');
   try { setMapTheme('menu'); setIntensity(0); } catch { /* audio off */ }
@@ -1035,7 +1062,13 @@ function showResult(m) {
     won, drew,
     map: MAP?.id,
     myTeam: mineTeam,
-    myName: meStat?.name, theirName: foeStat?.name,
+    // NAMED BY COLONY, not by whoever of them sorted first. The card compares
+    // NESTS, and a nest belongs to a colony, which in co-op and in pairs is two
+    // people: labelling that bar with one of their names is wrong about who it
+    // is describing. Falls through to the same name in every mode where a
+    // colony really is one person.
+    myName: colonyNameOf?.(mineTeam) || meStat?.name,
+    theirName: colonyNameOf?.(foeStat?.team) || foeStat?.name,
     // a free-for-all is a field, not an opponent: the best of the rest, and
     // where you came in it
     teams,
@@ -1072,9 +1105,7 @@ function showResult(m) {
   try { drawResultCard($('#result-card'), lastResult); } catch { /* card is optional */ }
   const v = $('#verdict');
   v.className = 'verdict ' + (m.winner < 0 ? '' : won ? 'win' : 'lose');
-  v.textContent = m.winner < 0 ? 'Nobody took the crumb'
-    : huds.length > 1 ? `${teamTint(m.winner).name} takes it`
-    : won ? 'Their nest is rubble' : 'Your nest is rubble';
+  v.textContent = verdictLine(m, lastResult, won, huds.length > 1);
   $('#verdict-why').textContent = m.why;
   if (won) sfx.win?.(); else sfx.deny?.();
 

@@ -411,6 +411,26 @@ Two real websocket clients play a whole match through the server and have to agr
 on who won. `coop` for the other mode.
 
 ```bash
+npm run netcheck -- ffa 6
+```
+
+Seats six real websocket clients in one free-for-all room and checks the four
+things a third colony makes possible: the lobby switch that turns a duel room
+into a six-seat one, a seat that closes the tab in the lobby and has to give its
+chair up, a colony that drops and comes back inside the window, and a colony
+that walks out and stays out until its nest falls and `_scatter` takes it off
+the board. `ffa 3` for a triangle, `--quick` to skip the ten-minute match.
+
+Set `AR_ABANDON_AFTER=8000` on the server and the check together to watch a
+colony scatter while its column is still walking. At the real 45 seconds its
+ants have already died of neglect, so the assertion passes on an empty lane and
+proves nothing; the check says so out loud rather than passing quietly.
+
+Headless clients are necessary and not sufficient, and this is the harness that
+passed for the whole life of the queen-cork bug. Nothing draws, so the burst of
+effects a scatter pushes into one frame is exactly what it cannot judge.
+
+```bash
 node tools/reconnect.js
 ```
 
