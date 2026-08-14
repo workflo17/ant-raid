@@ -1213,6 +1213,33 @@ window.AR = {
     return view && { t: view.t, units: view.units.length, defs: view.defs.length, nest: view.nestHp };
   },
   solo: (d) => startSolo(d || 'normal'),
+  /**
+   * QA only: a local match on ANY board, with a bot holding every colony.
+   *
+   * A free-for-all is online and needs three to six people, so the only way to
+   * get a ring board on screen used to be that many browser tabs. For anything
+   * about how the game LOOKS, and especially for anything about how long a
+   * frame takes, that is the wrong rig: six canvas-heavy tabs and a server on
+   * one machine measure the machine rather than the game. This puts a whole
+   * six-colony board in one tab.
+   *
+   * LocalDriver already takes a map and steps whatever is in `brains`; the only
+   * thing it cannot do by itself is field more than one, since a solo match
+   * wants exactly one opponent called '@ai'.
+   */
+  lab(n = 6, difficulty = 'normal') {
+    mode = 'versus';
+    driver = new LocalDriver({
+      map: n === 2 ? chosenMap : `ring${n}`,
+      seats: Array.from({ length: n }, (_, i) => ({
+        name: `Colony ${i + 1}`, team: i, roster: botLoadout(), queen: botQueen(),
+      })),
+    });
+    driver.brains = driver.sim.players.map((p) => new AiBrain(driver.sim, p.id, difficulty));
+    wireDriver([{ seat: 0, team: 0, keys: false, label: null }]);
+    driver.start();
+    return { map: driver.sim.map.id, colonies: driver.sim.teamCount, brains: driver.brains.length };
+  },
   hotseat: startHotseat,
   /** The front screen runs on rAF too, so it needs the same hand-crank. */
   get intro() { return intro; },
