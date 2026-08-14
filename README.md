@@ -28,6 +28,39 @@ npm start
 
 Then open <http://localhost:5010>.
 
+### Running more than one at once
+
+A second copy of the game on the same machine takes the next free port instead
+of dying, and says so:
+
+```
+Ant Raid on http://localhost:5011
+  5010 was taken, so this one moved up to 5011
+  sharing this machine with 1 other Ant Raid:
+    port 5010  C:\...\ant-raid
+```
+
+Sliding only happens when the address is for you alone. Set `PORT` and the
+server binds exactly that and fails loudly if it cannot, because `npm run
+share`, `npm run lan` and a deployed instance have all told somebody else where
+to look, and a server that quietly moved is a link that quietly broke. Use
+`AR_PORT` to move the starting point while keeping the sliding, which is what a
+second worktree wants:
+
+```bash
+AR_PORT=5030 npm start
+```
+
+Live instances register in `ant-raid-instances.json` in your temp directory, so
+`node tools/netcheck.js` finds the right server on its own rather than assuming
+5010. Dev screenshots land in `shots/<port>/` for the same reason: two dev
+servers used to overwrite each other's captures, which looks exactly like your
+change not working.
+
+Two browser tabs on one server are two separate players. The second tab gets its
+own name, colour, loadout and win record rather than sharing the first tab's,
+which is what makes it usable for testing a real match against yourself.
+
 ### Three to six of you: every colony for itself
 
 Host a room, pick **Every colony for itself**, send the link to everyone. Start
@@ -357,6 +390,18 @@ Plays whole bot-vs-bot matches and reports win split, match length, breach rate 
 what got bought. Pass a map id, or `all` to sweep every board. Current shape across
 all four: 5.0 minute matches, 13% of raiders reach a nest, 1 in 32 goes to sudden
 death, hard beats easy 16-4.
+
+```bash
+node tools/coop.js 8 normal all --probe
+```
+
+The same thing for co-op, which `balance.js` cannot see: two stand-in players
+share colony 0 against the handicapped bot, and it reports how often the pair
+win. `--probe` runs all three update orders and checks they agree before you
+believe the split, `--sweep=2.4,2.8` tabulates the bot's income multiplier, and
+`--seed` picks a different seed family, because one family leans several points
+on its own. Current shape: 48% to the pair at `aiIncomeMul.coop` 2.8, which was
+95% at the 1.7 the number sat on before anybody measured it.
 
 ```bash
 npm run netcheck -- versus

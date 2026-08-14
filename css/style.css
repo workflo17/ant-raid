@@ -198,6 +198,9 @@ h1, h2, .big-label, .verdict { text-wrap: balance; }
 
 .name-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 8px 0 16px; }
 .name-row label { font-size: 14px; font-weight: 700; opacity: .7; }
+/* Only ever rendered in a second tab on the same server, where this is the one
+   thing that explains why the name is not the one you last typed. */
+.name-row .tab-tag { font-size: 12px; font-weight: 700; opacity: .55; white-space: nowrap; }
 input {
   background: #fff;
   border: 2.5px solid var(--ink);

@@ -10,10 +10,14 @@ import { mapList } from '../shared/map.js';
 import { RAIDERS } from '../shared/data/units.js';
 import { TUNING } from '../shared/data/board.js';
 import { teamTint } from './colors.js';
+import { storeKey } from './session.js';
 import { drawAnt } from './render/ants.js';
 import { tinted } from './board.js';
 
-const KEY = 'antraid.record';
+// Per TAB, not per origin. Two tabs on the same server is how this game gets
+// tested, and both of them writing here meant one match added a win and a loss
+// to the same tally. See js/session.js.
+const KEY = storeKey('antraid.record');
 const BLANK = { wins: 0, losses: 0, draws: 0, streak: 0, bestStreak: 0, byMap: {}, h2h: {}, played: 0 };
 
 export function loadRecord() {

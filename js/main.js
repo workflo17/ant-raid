@@ -20,6 +20,9 @@ import { RAIDERS, DEFENDERS, DEFENDER_IDS, RAIDER_IDS, LOADOUT_SIZE, DEFAULT_LOA
 import { QUEENS, QUEEN_IDS, HERO, cleanQueen } from '../shared/data/heroes.js';
 import { AiBrain, botLoadout, botQueen } from '../shared/ai.js';
 import { EMOTES } from '../shared/data/emotes.js';
+// Preferences go through here rather than straight to localStorage: a second
+// tab on this origin is a second PLAYER, not the same one twice. See session.js.
+import { load as loadPref, save as savePref, tabSlot } from './session.js';
 
 const $ = (s) => document.querySelector(s);
 const screens = ['intro', 'title', 'lobby', 'game', 'over'];
@@ -29,10 +32,10 @@ let MAP = null;                                  // the built map this match is 
 let worstDeficit = 0;                            // the hole you climbed out of
 let lastLaneTap = null;                          // for the touch double-tap send
 let lastResult = null;                           // what the share card describes
-let chosenMap = localStorage.getItem('antraid.map') || DEFAULT_MAP;
-let chosenPack = cleanLoadout(JSON.parse(localStorage.getItem('antraid.pack') || 'null') || DEFAULT_LOADOUT);
-let chosenQueen = cleanQueen(localStorage.getItem('antraid.queen'));
-let chosenColor = cleanColor(localStorage.getItem('antraid.color'), 'ember');
+let chosenMap = loadPref('antraid.map') || DEFAULT_MAP;
+let chosenPack = cleanLoadout(JSON.parse(loadPref('antraid.pack') || 'null') || DEFAULT_LOADOUT);
+let chosenQueen = cleanQueen(loadPref('antraid.queen'));
+let chosenColor = cleanColor(loadPref('antraid.color'), 'ember');
 
 function show(name) {
   for (const s of screens) $(`#screen-${s}`).classList.toggle('hidden', s !== name);
@@ -215,7 +218,7 @@ function buildMapStrip(el, { onPick, locked }) {
 
 function pickMap(id, strips) {
   chosenMap = id;
-  localStorage.setItem('antraid.map', id);
+  savePref('antraid.map', id);
   for (const el of strips) {
     for (const b of el.querySelectorAll('.map-card')) {
       const on = b.dataset.map === id;
@@ -278,7 +281,7 @@ function togglePack(id, redraw) {
     }
     chosenPack.push(id);
   }
-  localStorage.setItem('antraid.pack', JSON.stringify(chosenPack));
+  savePref('antraid.pack', JSON.stringify(chosenPack));
   redraw();
   if (driver?.online) driver.setLoadout(chosenPack, chosenQueen, chosenColor);
 }
@@ -344,7 +347,7 @@ function buildColorStrip(el) {
 
 function pickColor(id) {
   chosenColor = cleanColor(id, 'ember');
-  localStorage.setItem('antraid.color', chosenColor);
+  savePref('antraid.color', chosenColor);
   // preview it everywhere at once: menu art, HUD variables, the lot
   setColonyColors(resolveColors([chosenColor, chosenColor === 'frost' ? 'ember' : 'frost']));
   paintTitle();
@@ -354,7 +357,7 @@ function pickColor(id) {
 
 function pickQueen(id) {
   chosenQueen = cleanQueen(id);
-  localStorage.setItem('antraid.queen', chosenQueen);
+  savePref('antraid.queen', chosenQueen);
   redrawPacks();
   if (driver?.online) driver.setLoadout(chosenPack, chosenQueen, chosenColor);
 }
@@ -374,8 +377,17 @@ const redrawPacks = () => {
 
 let chosenDifficulty = 'normal';
 
-$('#name').value = localStorage.getItem('antraid.name') || '';
-$('#name').oninput = (e) => localStorage.setItem('antraid.name', e.target.value);
+$('#name').value = loadPref('antraid.name') || '';
+$('#name').oninput = (e) => savePref('antraid.name', e.target.value);
+// A second tab on this origin is a second PLAYER now, with its own name, colour
+// and record. Say so where the name is, or the seeded "Ember 2" reads as the
+// game having forgotten you rather than as this tab being somebody else.
+if (tabSlot > 0) {
+  const tag = document.createElement('span');
+  tag.className = 'tab-tag';
+  tag.textContent = `tab ${tabSlot + 1}, its own settings`;
+  $('.name-row').appendChild(tag);
+}
 const myName = () => ($('#name').value || '').trim().slice(0, 16);
 
 document.querySelectorAll('[data-go]').forEach((b) => {

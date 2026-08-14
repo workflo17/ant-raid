@@ -17,9 +17,38 @@ import { cleanQueen } from './shared/data/heroes.js';
 import { cleanColor, resolveColors } from './shared/data/board.js';
 import { isEmote, EMOTE_GAP } from './shared/data/emotes.js';
 import { DT, TICK_HZ } from './shared/data/board.js';
+import { claim, release, listInstances } from './tools/instances.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT || 5010);
+/**
+ * MAY THIS SERVER MOVE OFF THE PORT IT WAS ASKED FOR?
+ *
+ * Only when nobody else has been told where it is, which is why there are two
+ * variables here rather than one.
+ *
+ *   PORT=5010     bind exactly that, fail loudly if it is taken
+ *   AR_PORT=5030  start there and slide up to the next free one
+ *   neither       start at 5010 and slide
+ *
+ * An explicitly set PORT is always a promise to somebody. Render sets it and
+ * health-checks that exact port; `npm run share` has a public tunnel pointed at
+ * it; `npm run lan` has already printed it to a friend. Those have to fail
+ * loudly when the port is taken, because a server that quietly moved is a link
+ * that quietly broke, and in the tunnel case it is worse than that: the address
+ * stays live in front of whatever else is sitting on the port. That mistake has
+ * been made in this repo once already, see the pre-flight in tools/share.mjs.
+ *
+ * Sliding is for the case where the only reader of the address is the person
+ * who typed the command, which is most of a dev day: two worktrees both running
+ * `npm start` is a normal Tuesday. AR_PORT exists so a second worktree can have
+ * its own base and still slide, since overloading PORT for that would mean
+ * choosing between "somewhere else" and "safe".
+ */
+const PIN_PORT = !!String(process.env.PORT ?? '').trim();
+const BASE_PORT = Number(process.env.PORT || process.env.AR_PORT || 5010);
+const MAX_SLIDE = 20;
+// the port actually bound, which is BASE_PORT unless it had to move
+let PORT = BASE_PORT;
 const SNAP_EVERY = 3;          // broadcast at 10 Hz, simulate at 30 Hz
 const ABANDON_AFTER = 45_000;  // forfeit if a colony stays empty this long
 const EMPTY_ROOM_TTL = 10 * 60_000;
@@ -55,6 +84,22 @@ const MIME = {
  */
 const DEV_SHOTS = process.env.AR_DEV_SHOTS === '1';
 
+/**
+ * Which subdirectory of shots/ this instance writes to.
+ *
+ * Everything used to land in shots/<name>.png, so two dev servers running out
+ * of two worktrees silently overwrote each other's captures: you read back
+ * board.png and got the other session's board, which looks exactly like your
+ * change not working. The bound port is the natural name because it is the one
+ * thing that is already unique per instance and is printed at startup, so the
+ * file you want is findable without consulting anything.
+ *
+ * AR_SESSION overrides it with something more memorable. Slugged like the
+ * filename is: it comes from the operator rather than from a client, but the
+ * value is about to be joined onto a path either way.
+ */
+const shotDir = () => String(process.env.AR_SESSION || PORT).replace(/[^a-z0-9_-]/gi, '').slice(0, 32) || String(PORT);
+
 function handleShot(req, res, url) {
   if (!DEV_SHOTS) { res.writeHead(404).end('not found'); return; }
   const addr = req.socket.remoteAddress || '';
@@ -68,9 +113,11 @@ function handleShot(req, res, url) {
     chunks.push(d);
   });
   req.on('end', () => {
-    fs.mkdirSync(path.join(ROOT, 'shots'), { recursive: true });
-    fs.writeFileSync(path.join(ROOT, 'shots', `${name}.png`), Buffer.concat(chunks));
-    res.writeHead(200, { 'content-type': 'text/plain' }).end(`shots/${name}.png`);
+    const dir = shotDir();
+    fs.mkdirSync(path.join(ROOT, 'shots', dir), { recursive: true });
+    fs.writeFileSync(path.join(ROOT, 'shots', dir, `${name}.png`), Buffer.concat(chunks));
+    // the full path back, so whatever awaited AR.shot() names the right file
+    res.writeHead(200, { 'content-type': 'text/plain' }).end(`shots/${dir}/${name}.png`);
   });
 }
 
@@ -358,6 +405,13 @@ class Room {
 
 const wss = new WebSocketServer({ server, path: '/ws' });
 
+// ws forwards the http server's `error` events onto the WebSocketServer as
+// well, and an `error` event with no listener is a hard crash. So a busy port
+// killed the process here, on the wss, before the retry in bind() below ever
+// got its turn. The http server owns that decision; this listener exists so ws
+// does not pre-empt it. Anything that is not a port clash still throws.
+wss.on('error', (e) => { if (e.code !== 'EADDRINUSE') throw e; });
+
 function fail(ws, why) {
   if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'err', why }));
 }
@@ -523,11 +577,63 @@ setInterval(() => {
 // their port detection and health checks reach the container over IPv4, and an
 // IPv6-only listener makes an instance intermittently unreachable rather than
 // cleanly broken.
-server.listen(PORT, '0.0.0.0', () => {
-  const pub = publicUrl();
-  console.log(`Ant Raid on http://localhost:${PORT}`);
-  if (DEV_SHOTS) console.log('  dev screenshot sink ON (AR_DEV_SHOTS=1) — do not use this while sharing');
-  if (pub) console.log(`  shareable link: ${pub}`);
-  else console.log(`  local only. For a link a friend can open: npm run share`);
-  console.log(`  sim ${TICK_HZ}Hz, snapshots ${TICK_HZ / SNAP_EVERY}Hz, ws at /ws`);
-});
+//
+// The free port is found by TRYING TO BIND IT, never by probing first and
+// binding second. A probe is a different socket answering a slightly different
+// question, and tools/share.mjs records what that costs: probing 0.0.0.0 came
+// back free on Windows while another process already held `:::5010`. It also
+// leaves a gap between the answer and the bind for somebody else to take the
+// port in. Asking for the socket we actually want has neither problem.
+//
+// Each attempt registers BOTH handlers and whichever one fires takes the
+// other's listener off. Passing the success callback to listen() instead looks
+// tidier and is wrong: listen(port, host, cb) registers cb as a `listening`
+// listener, a failed attempt never fires it, and it is still registered when a
+// LATER attempt succeeds. The server then announced two ports, registered
+// itself in the instance table twice, and left the shots directory pointing at
+// whichever callback happened to run last.
+function bind(port, attempt = 0) {
+  const onBusy = (e) => {
+    server.removeListener('listening', onUp);
+    if (e.code !== 'EADDRINUSE') throw e;
+    if (PIN_PORT || attempt >= MAX_SLIDE) {
+      console.error(`\nPort ${port} is already in use.`);
+      for (const o of listInstances()) console.error(`  port ${o.port} is an Ant Raid from ${o.root}`);
+      console.error(PIN_PORT
+        ? '\nPORT was set explicitly, so this will not move off it. Free the port, or set another.\n'
+        : `\nTried ${MAX_SLIDE + 1} ports from ${BASE_PORT} up and every one was busy.\n`);
+      process.exit(1);
+    }
+    bind(port + 1, attempt + 1);
+  };
+  const onUp = () => {
+    // drop the retry handler, or every attempt's copy fires on a later error
+    server.removeListener('error', onBusy);
+    PORT = port;
+    const others = claim({ pid: process.pid, port, root: ROOT, startedAt: Date.now() });
+    const pub = publicUrl();
+    console.log(`Ant Raid on http://localhost:${PORT}`);
+    if (port !== BASE_PORT) console.log(`  ${BASE_PORT} was taken, so this one moved up to ${port}`);
+    if (others.length) {
+      console.log(`  sharing this machine with ${others.length} other Ant Raid${others.length > 1 ? 's' : ''}:`);
+      for (const o of others) console.log(`    port ${o.port}  ${o.root}`);
+    }
+    if (DEV_SHOTS) console.log(`  dev screenshot sink ON (AR_DEV_SHOTS=1), writing to shots/${shotDir()}. Do not use this while sharing.`);
+    if (pub) console.log(`  shareable link: ${pub}`);
+    else console.log(`  local only. For a link a friend can open: npm run share`);
+    console.log(`  sim ${TICK_HZ}Hz, snapshots ${TICK_HZ / SNAP_EVERY}Hz, ws at /ws`);
+  };
+  server.once('error', onBusy);
+  server.once('listening', onUp);
+  server.listen(port, '0.0.0.0');
+}
+
+// Deregistering is a courtesy, not a correctness requirement: listInstances()
+// decides liveness by asking the OS about the pid, so a hard kill self-heals.
+const deregister = () => release(process.pid);
+process.on('exit', deregister);
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => { deregister(); process.exit(0); });
+}
+
+bind(BASE_PORT);

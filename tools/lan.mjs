@@ -110,5 +110,11 @@ async function main() {
   }
 
   console.log('Starting the game. Ctrl+C to stop.\n');
+  // Pin the port before handing server.js the process. It slides to the next
+  // free one when PORT is unset, which would be wrong here: every address
+  // printed above names this port, and a server that quietly moved would send
+  // whoever is on the couch to a port with nothing on it. Better to fail with
+  // EADDRINUSE, which at least says what happened.
+  process.env.PORT = String(PORT);
   await import('../server.js');
 }

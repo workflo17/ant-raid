@@ -94,8 +94,35 @@ export const TUNING = {
   // a raider that walks into a friendly's back slows to its pace instead of
   // stacking on top of it — this is what makes a push look like a column
   columnGap: 15,
-  // AI colony income handicaps
-  aiIncomeMul: { easy: 0.85, normal: 1.0, hard: 1.25, coop: 1.7 },
+  // AI colony income handicaps. easy/normal/hard are the solo ladder, one bot
+  // against one player. `coop` is the separate number for the bot that faces
+  // two, and it is read only when the mode is co-op, so it cannot move a duel.
+  //
+  // It was 1.7, and 1.7 was picked before queens existed. Queens are per
+  // PLAYER, so co-op quietly became two of them against the bot's one. Nothing
+  // caught it, because the balance harness only ever played duels. It does not
+  // any more: node tools/coop.js 8 normal all --probe
+  //
+  // At 1.7 the pair won 95% (61 of 64 across two seed families, with all three
+  // update orders agreeing). That is not a mode that leans friendly, it is a
+  // mode that is over before it starts. 2.8 puts them on 48% (46 of 96 across
+  // three seed families, 92 of 192 counting every update order), which is the
+  // fight the duel harness calls balanced when two normal brains play it, and
+  // the pair face it while both purses are driven by brains that never misplay.
+  //
+  // THE SECOND QUEEN IS NOT THE STORY, which is worth knowing before anybody
+  // tries to fix this by handing the bot one. Take the pair's second queen away
+  // and they still win 92% rather than 95%: three points out of forty five. The
+  // rest of the doubling is what does it, and none of it is per colony either.
+  // Two purses, two lots of starting sugar, two sets of power cooldowns, and a
+  // 74 ant board budget against the bot's 55.
+  //
+  // AND THIS LEVER SATURATES, so do not reach for it twice. The bot buys at
+  // most one thing per think, which is every 0.5s, so past about 3.0 the extra
+  // income simply piles up unspent: mean bank 279 at 1.7, 1580 at 2.8, 2290 at
+  // 3.0, and the win rate stops moving. If co-op ever has to be harder than
+  // this, the bot needs to act more often, not to be paid more.
+  aiIncomeMul: { easy: 0.85, normal: 1.0, hard: 1.25, coop: 2.8 },
 };
 
 /**

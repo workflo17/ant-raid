@@ -129,7 +129,14 @@ async function main() {
     console.log(`  Open the same address yourself, and the room link will be shareable too.\n`);
     server = spawn(process.execPath, ['server.js'], {
       stdio: 'inherit',
-      env: { ...process.env, AR_PUBLIC_URL: url },
+      // PORT is passed EXPLICITLY, and that is load-bearing rather than tidy.
+      // server.js slides to the next free port when PORT is unset, which is
+      // right on a dev box and catastrophic here: the tunnel is already open on
+      // this port, so a server that quietly moved would leave a live public
+      // address pointing at whatever else is sitting on it. Setting PORT pins
+      // it, so if the port went in the gap since the check above, the server
+      // dies loudly and takes the tunnel down with it.
+      env: { ...process.env, AR_PUBLIC_URL: url, PORT: String(PORT) },
     });
     // if the game dies, the tunnel dies with it: a live public address left
     // pointing at whatever grabs the port next is the worst outcome here

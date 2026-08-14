@@ -254,7 +254,20 @@ export class AiBrain {
   }
 
   _defend(me) {
-    const mine = this.sim.defs.filter((d) => d.team === me.team);
+    // MINE, not my colony's, and capped by the roads that reach my nest.
+    //
+    // Two halves from two branches, and both are load-bearing. `d.owner` and not
+    // `d.team`: a colony can hold more than one player, and two brains sharing a
+    // side counted each other's pads against their own budget, so a pair filled
+    // 3 of their 4 slots between them while a lone bot filled all 4. `maxDefs`
+    // and not `level.maxDefs`: the level's appetite is written for the three
+    // roads of a duelling board, and a ring colony has four arriving at it, so
+    // holding it to three left a quarter of its front door uncovered and the
+    // breach rate ran at 42 percent against a duel's 32.
+    //
+    // Neither changes a duel. One brain per colony makes owner and team select
+    // the same defenders, and three roads make maxDefs equal level.maxDefs.
+    const mine = this.sim.defs.filter((d) => d.owner === me.index);
     if (mine.length >= this.maxDefs) return;
 
     // pick what to build: follow the opening, but answer real pressure first

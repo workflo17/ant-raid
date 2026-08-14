@@ -2,9 +2,33 @@
 // room, play a whole match against each other through the server, and assert
 // that both saw the same result. Start the server first, then:
 //   node tools/netcheck.js [mode]        mode = versus | coop
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocket } from 'ws';
+import { listInstances } from './instances.mjs';
 
-const URL = process.env.AR_URL || 'ws://localhost:5010/ws';
+/**
+ * Which server to check.
+ *
+ * AR_URL still wins, and it is the only way to reach a remote one. With nothing
+ * set this used to assume 5010, which stopped being safe once a second server
+ * on the machine slides to 5011: the check would connect to somebody else's
+ * instance, or to nothing, and report a broken server either way.
+ *
+ * So it asks the instance registry, and prefers a server started from THIS
+ * repo, newest first. That is the one a `node tools/netcheck.js` typed in this
+ * directory almost certainly means.
+ */
+function discover() {
+  const here = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  const live = listInstances().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  const mine = live.filter((e) => e.root === here);
+  const pick = mine[0] || live[0];
+  if (pick) console.log(`checking the Ant Raid on port ${pick.port}${pick.root === here ? '' : ` from ${pick.root}`}`);
+  return `ws://localhost:${pick ? pick.port : 5010}/ws`;
+}
+
+const URL = process.env.AR_URL || discover();
 const MODE = process.argv[2] || 'versus';
 const UNITS = ['worker', 'army', 'trapjaw', 'archer', 'exploder', 'weaver', 'majoress'];
 
