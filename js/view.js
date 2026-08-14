@@ -71,6 +71,7 @@ export function buildView(map, cur, prev, a = 1) {
     n: cur.n,
     t: cur.t,
     nestHp: cur.hp,
+    nestOut: cur.out || cur.hp.map((h) => h <= 0),
     units, defs, walls, wild,
     food: {
       hold: cur.fd ? cur.fd[0] : 0,

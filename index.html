@@ -187,19 +187,9 @@
 <!-- ───────────────────────────── game ───────────────────────────── -->
 <section id="screen-game" class="screen hidden">
 
-  <header class="nestbar">
-    <div class="nest ember" id="nest-0">
-      <span class="nest-name">Ember</span>
-      <div class="bar"><i></i></div>
-      <span class="nest-hp">100</span>
-    </div>
-    <div class="clock"><span id="clock">0:00</span><small id="clock-note"></small></div>
-    <div class="nest frost right" id="nest-1">
-      <span class="nest-hp">100</span>
-      <div class="bar"><i></i></div>
-      <span class="nest-name">Frost</span>
-    </div>
-  </header>
+  <!-- One readout per colony, built in js/main.js from the match rather than
+       from here: a free-for-all runs three to six of them. -->
+  <header class="nestbar" id="nestbar" role="group" aria-label="Nest health"></header>
 
   <main class="stage">
     <div class="rail" id="rail-0" aria-label="Lanes"></div>
