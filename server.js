@@ -141,10 +141,29 @@ function makeCode() {
   return code;
 }
 
+/**
+ * The three ways a room can be arranged.
+ *
+ *   versus  one each, opposite colonies
+ *   coop    both humans share a colony, a bot takes the other
+ *   pairs   four humans, two to a colony
+ *
+ * `team` is a function of SEAT ORDER so it is decided the same way on every
+ * client and never negotiated. In pairs the first two to arrive share a colony,
+ * which is what makes "get in before the others and you are with your friend"
+ * work without a team-picking screen.
+ */
+const MODES = {
+  versus: { seats: 2, team: (i) => i, bot: false },
+  coop:   { seats: 2, team: () => 0,  bot: true },
+  pairs:  { seats: 4, team: (i) => (i < 2 ? 0 : 1), bot: false },
+};
+const cleanMode = (m) => (Object.hasOwn(MODES, m) ? m : 'versus');
+
 class Room {
   constructor(code, mode, difficulty, map) {
     this.code = code;
-    this.mode = mode === 'coop' ? 'coop' : 'versus';
+    this.mode = cleanMode(mode);
     this.difficulty = difficulty || 'normal';
     // never trust a client-supplied map id straight into the sim
     this.map = MAP_IDS.includes(map) ? map : DEFAULT_MAP;
@@ -157,18 +176,25 @@ class Room {
     this.lastActivity = Date.now();
   }
 
-  get capacity() { return 2; }
+  get capacity() { return MODES[this.mode].seats; }
 
-  /** Team colours for this room, with a clash settled the same way every time. */
+  /**
+   * Team colours for this room, with a clash settled the same way every time.
+   *
+   * Ask the first seat of each COLONY, not seats 0 and 1: in pairs those two are
+   * team-mates, so reading them as the two colonies would paint both sides from
+   * one team's preferences and leave the other side's choice unused.
+   */
   resolvedColors() {
-    return resolveColors(this.seats.map((s) => s.color));
+    const firstOf = (team) => this.seats.find((s, i) => this.teamFor(i) === team);
+    return resolveColors([firstOf(0)?.color, firstOf(1)?.color]);
   }
   get started() { return !!this.sim; }
 
   seatFor(ws) { return this.seats.find((s) => s.ws === ws); }
 
   /** In co-op both humans share team 0 and face the bot; in versus they oppose. */
-  teamFor(index) { return this.mode === 'coop' ? 0 : index; }
+  teamFor(index) { return MODES[this.mode].team(index); }
 
   add(ws, name, roster, queen, color) {
     if (this.seats.length >= this.capacity) return null;
@@ -217,6 +243,7 @@ class Room {
       map: this.map,
       difficulty: this.difficulty,
       started: this.started,
+      capacity: this.capacity,
       players: this.seats.map((s, i) => ({
         pid: s.pid, name: s.name, team: this.teamFor(i), connected: s.connected,
         roster: s.roster, queen: s.queen,
@@ -241,7 +268,7 @@ class Room {
       seed: (Math.random() * 1e9) | 0,
       players,
       // co-op needs somebody to raid: the bot takes the whole other side
-      ai: this.mode === 'coop' ? { team: 1, difficulty: 'coop' } : null,
+      ai: MODES[this.mode].bot ? { team: 1, difficulty: 'coop' } : null,
     });
     this.brains = this.mode === 'coop' ? [new AiBrain(this.sim, '@ai', 'coop')] : [];
     this.frame = 0;
@@ -261,12 +288,16 @@ class Room {
     for (const s of this.seats) {
       if (s.connected) continue;
       if (!s.gone) s.gone = now;
-      else if (now - s.gone > ABANDON_AFTER && !sim.over) {
-        sim.over = true;
-        const idx = this.seats.indexOf(s);
-        sim.winner = this.mode === 'coop' ? -1 : 1 - this.teamFor(idx);
-        sim.endReason = `${s.name} left the table`;
-      }
+      if (now - s.gone <= ABANDON_AFTER || sim.over) continue;
+      // A colony forfeits when NOBODY is left holding it. In pairs one player
+      // dropping leaves a team-mate still playing, and ending their match for
+      // them would be the wrong call.
+      const team = this.teamFor(this.seats.indexOf(s));
+      const stillThere = this.seats.some((o, i) => o.connected && this.teamFor(i) === team);
+      if (stillThere) continue;
+      sim.over = true;
+      sim.winner = MODES[this.mode].bot ? -1 : 1 - team;
+      sim.endReason = `${s.name} left the table`;
     }
 
     if (++this.frame % SNAP_EVERY === 0 || sim.over) {
@@ -362,7 +393,12 @@ wss.on('connection', (ws) => {
       case 'mode': {
         if (!room || room.started) return;
         if (room.seats[0]?.ws !== ws) return fail(ws, 'only the host sets the mode');
-        if (m.mode) room.mode = m.mode === 'coop' ? 'coop' : 'versus';
+        if (m.mode) {
+          const next = cleanMode(m.mode);
+          // never shrink the room below the people already in it
+          if (MODES[next].seats >= room.seats.length) room.mode = next;
+          else return fail(ws, `${room.seats.length} players are already here`);
+        }
         if (m.map && MAP_IDS.includes(m.map)) room.map = m.map;
         if (m.difficulty) room.difficulty = m.difficulty;
         room.broadcast(room.lobbyState());

@@ -600,6 +600,92 @@ test('an emote is an index into a fixed list and nothing else', () => {
   }
 });
 
+// ------------------------------------------------------------- two a side
+
+/** Four players, two to a colony, which is what the `pairs` room mode builds. */
+const foursome = (opts = {}) => new Sim({
+  mode: 'versus', seed: 11, wildlife: false,
+  players: [
+    { id: 'A', name: 'A', team: 0, color: 'moss' },
+    { id: 'B', name: 'B', team: 0, color: 'plum' },
+    { id: 'C', name: 'C', team: 1, color: 'teal' },
+    { id: 'D', name: 'D', team: 1, color: 'amber' },
+  ],
+  ...opts,
+});
+
+test('two a side: team-mates split the pads and cannot build on each other', () => {
+  const sim = foursome();
+  const [a, b, c, d] = ['A', 'B', 'C', 'D'].map((id) => sim.playerById(id));
+  for (const p of sim.players) p.sugar = 9999;
+
+  // every pad on a side is owned by exactly one of the two who hold it
+  for (const team of [0, 1]) {
+    const pair = sim.players.filter((p) => p.team === team);
+    const all = pair.flatMap((p) => p.padIdx).sort();
+    assert.deepEqual(all, sim.map.pads[team].map((_, i) => i), `team ${team} does not cover its pads`);
+    assert.equal(new Set(all).size, all.length, `team ${team} has a pad owned twice`);
+    assert.ok(pair.every((p) => p.padIdx.length > 0), `team ${team} left somebody with no pads`);
+  }
+  assert.equal(sim.command('A', { kind: 'build', def: 'worker', pad: a.padIdx[0] }).ok, true);
+  assert.match(sim.command('A', { kind: 'build', def: 'worker', pad: b.padIdx[0] }).why, /your pad/);
+  // and the mirrored pair get exactly the same split, or one colony defends better
+  assert.deepEqual(a.padIdx, c.padIdx);
+  assert.deepEqual(b.padIdx, d.padIdx);
+});
+
+test('two a side: one colour per colony, not one per player', () => {
+  const sim = foursome();
+  assert.equal(sim.colors.length, 2);
+  // the first player of each colony decides it; a team-mate cannot wear another
+  assert.equal(sim.colors[0], 'moss');
+  assert.equal(sim.colors[1], 'teal');
+  assert.notEqual(sim.colors[0], sim.colors[1]);
+});
+
+test('two a side: the board budget is shared, so four purses cannot double it', () => {
+  const solo = duel();
+  const four = foursome();
+  const soloCap = solo.unitCapFor(solo.playerById('A'));
+  const pairCap = four.unitCapFor(four.playerById('A'));
+
+  // a lone player is untouched by any of this
+  assert.equal(soloCap, TUNING.maxUnitsPerPlayer);
+  // a colony of two gets more than one player, and well under two players' worth
+  assert.ok(pairCap < soloCap, 'a team-mate did not reduce the per-player budget');
+  assert.ok(pairCap * 2 > soloCap, 'a colony of two is worse off than a lone player');
+  assert.ok(pairCap * 2 < soloCap * 2, 'two a side can put twice as much on one board');
+
+  // and the cap is actually enforced per player, so nobody can be starved out
+  const p = four.playerById('A');
+  p.sugar = 1e6;
+  let refused = null;
+  for (let i = 0; i < 300 && !refused; i++) {
+    const r = four.command('A', { kind: 'send', unit: p.roster[0], lane: i % 3 });
+    if (!r.ok) refused = r.why;
+  }
+  assert.match(refused, /full/);
+  const mine = four.units.filter((u) => u.owner === p.index).length;
+  assert.ok(mine <= pairCap, `A fielded ${mine}, over its ${pairCap} budget`);
+  // the team-mate still has their own room
+  assert.equal(four.command('B', { kind: 'send', unit: four.playerById('B').roster[0], lane: 0 }).ok, true);
+});
+
+test('two a side: both colonies field two queens, and they mirror', () => {
+  const sim = foursome();
+  for (const p of sim.players) p.sugar = 9999;
+  for (const [id, lane] of [['A', 0], ['B', 2], ['C', 0], ['D', 2]]) {
+    assert.equal(sim.command(id, { kind: 'queen', lane }).ok, true, id);
+  }
+  run(sim, 1);
+  const queens = sim.units.filter((u) => u.kind === 'h');
+  assert.equal(queens.filter((u) => u.team === 0).length, 2);
+  assert.equal(queens.filter((u) => u.team === 1).length, 2);
+  // same lanes on both sides, so neither colony gets a better opening
+  const lanesOf = (t) => queens.filter((u) => u.team === t).map((u) => u.lane).sort();
+  assert.deepEqual(lanesOf(0), lanesOf(1));
+});
+
 // ---------------------------------------------------------------- commands
 
 test('the server refuses what a player cannot do', () => {

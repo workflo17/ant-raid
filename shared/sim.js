@@ -172,6 +172,16 @@ export class Sim {
     return base * (1 - t * (1 - TUNING.ecoFloor));
   }
 
+  /**
+   * How many ants THIS player may have on the board at once. Shared out so that
+   * a colony of two cannot put twice as much on a board of the same size.
+   */
+  unitCapFor(p) {
+    const n = this._teamSize(p.team);
+    if (n <= 1) return TUNING.maxUnitsPerPlayer;
+    return Math.round(TUNING.maxUnitsPerPlayer * TUNING.teamCapMul);
+  }
+
   /** How many players share a colony, so the herd pays a team and not a head. */
   _teamSize(team) {
     let n = 0;
@@ -253,7 +263,7 @@ export class Sim {
     if (p.sugar < def.cost) return { ok: false, why: 'not enough sugar' };
     let alive = 0;
     for (const u of this.units) if (u.owner === p.index) alive++;
-    if (alive + (def.count || 1) > TUNING.maxUnitsPerPlayer) return { ok: false, why: 'lanes are full' };
+    if (alive + (def.count || 1) > this.unitCapFor(p)) return { ok: false, why: 'lanes are full' };
     p.sugar -= def.cost;
     p.spent += def.cost;
     p.sent += def.count || 1;
@@ -408,7 +418,7 @@ export class Sim {
     } else if (ab.id === 'levy') {
       let alive = 0;
       for (const o of this.units) if (o.owner === p.index) alive++;
-      const room = Math.max(0, TUNING.maxUnitsPerPlayer - alive);
+      const room = Math.max(0, this.unitCapFor(p) - alive);
       const n = Math.min(ab.count, room);
       // free bodies, and deliberately NOT worth eco: an ability that grew your
       // income would compound with itself every time it came off cooldown

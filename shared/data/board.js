@@ -50,9 +50,16 @@ export const TUNING = {
   // and it pays more the further behind you are, up to double at a full nest
   // of deficit. This is the deliberate rubber band, and it is visible in the HUD.
   leakDesperation: 1.0,
-  // a hard ceiling so a stalled lane cannot melt the server or the framerate:
-  // two bots pouring into one contested lane peaked at 312 ants before this
+  // A hard ceiling so a stalled lane cannot melt the server or the framerate:
+  // two bots pouring into one contested lane peaked at 312 ants before this.
   maxUnitsPerPlayer: 55,
+  // ...but the ceiling that matters is what the BOARD can draw, not what one
+  // player can buy. Two a side is four purses feeding one board: peak went from
+  // 64 ants to 201, and a measured frame at 110 ants with effects running
+  // already costs 26ms, so 200 would be a slideshow. A colony with team-mates
+  // gets more than a lone player but nowhere near double, and the budget is
+  // still PER PLAYER so a greedy team-mate cannot starve the other one.
+  teamCapMul: 0.68,
   // sudden death: from 8:00 both nests bleed, so nobody turtles forever
   suddenDeathAt: 480,
   suddenDeathDps: 2,

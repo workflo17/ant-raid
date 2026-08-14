@@ -545,16 +545,24 @@ function renderLobby(m) {
   const isHost = d.host;
   $('#mode-block').classList.toggle('hidden', !isHost);
   $('#lobby-hint').textContent = isHost
-    ? 'Send that link to your friend. The raid starts when you say so.'
-    : `Waiting for the host to start.`;
+    ? (m?.mode === 'pairs'
+      ? 'Send that link to all three of them. The first two in share a colony with you.'
+      : 'Send that link to your friend. The raid starts when you say so.')
+    : 'Waiting for the host to start.';
 
   const seats = $('#seats');
   seats.innerHTML = '';
   const players = m?.players || [];
-  for (let i = 0; i < 2; i++) {
+  // How many chairs to draw. The server owns this, so a mode it has not told us
+  // about yet still renders the two everybody has.
+  const capacity = m?.capacity || 2;
+  const teamOf = (i) => players[i]?.team ?? (m?.mode === 'pairs' ? (i < 2 ? 0 : 1) : m?.mode === 'coop' ? 0 : i);
+  for (let i = 0; i < capacity; i++) {
     const p = players[i];
     const li = document.createElement('li');
-    li.className = `seat ${p ? `t${p.team}` : 'empty'}`;
+    li.className = `seat ${p ? `t${p.team}` : 'empty'} t${teamOf(i)}side`;
+    // in pairs the two colonies need a visible seam, or four names read as a list
+    if (capacity > 2 && i > 0 && teamOf(i) !== teamOf(i - 1)) li.classList.add('seam');
     if (p?.color) li.style.setProperty('--seat-color', COLONY_COLORS.find((c) => c.id === p.color)?.accent || '');
     const packed = (p?.roster || []).map((id) =>
       `<i style="background:${RAIDERS[id].color}" title="${RAIDERS[id].name}"></i>`).join('');
@@ -564,7 +572,7 @@ function renderLobby(m) {
         `<span class="packed" aria-label="packed: ${(p.roster || []).map((id) => RAIDERS[id].name).join(', ')}">${packed}</span>` +
         (qn ? `<span class="qtag">${qn}</span>` : '') +
         `<span class="tag">${p.pid === d.pid ? 'you' : ''}${p.connected ? '' : ' · away'}</span>`
-      : `<span class="dot"></span><span>Waiting for a second colony…</span>`;
+      : `<span class="dot"></span><span>${capacity > 2 ? 'Empty chair' : 'Waiting for a second colony…'}</span>`;
     seats.appendChild(li);
   }
 
@@ -581,9 +589,11 @@ function renderLobby(m) {
   buildQueenStrip($('#lobby-queen-strip'), {});
   const btn = $('#lobby-start');
   btn.disabled = !isHost || !m?.canStart;
+  const waitingFor = Math.max(0, capacity - players.length);
   btn.textContent = !isHost ? 'The host starts this one'
     : m?.canStart ? 'Start the raid'
-    : 'Waiting for a second colony';
+    : waitingFor === 1 ? 'Waiting for one more'
+    : `Waiting for ${waitingFor} more`;
 }
 
 document.querySelectorAll('[data-mode]').forEach((b) => {
@@ -665,10 +675,16 @@ function wireDriver(seatSpecs, netIndex) {
 
   // colony names on the nest bar
   if (full) {
-    const t0 = full.players.find((p) => p.team === 0);
-    const t1 = full.players.find((p) => p.team === 1);
-    $('#nest-0 .nest-name').textContent = (t0?.name || teamTint(0).name).slice(0, 12);
-    $('#nest-1 .nest-name').textContent = (t1?.name || teamTint(1).name).slice(0, 12);
+    // a colony can be two people, so name it after everyone holding it rather
+    // than after whoever happened to sit down first
+    const colonyName = (team) => {
+      const names = full.players.filter((p) => p.team === team).map((p) => p.name).filter(Boolean);
+      if (!names.length) return teamTint(team).name;
+      const joined = names.join(' & ');
+      return joined.length <= 18 ? joined : `${names[0]} +${names.length - 1}`;
+    };
+    $('#nest-0 .nest-name').textContent = colonyName(0);
+    $('#nest-1 .nest-name').textContent = colonyName(1);
     for (const h of huds) h.padIdx = full.players.find((p) => p.i === h.meIndex)?.pads || [];
   }
 

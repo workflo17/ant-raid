@@ -28,6 +28,26 @@ npm start
 
 Then open <http://localhost:5010>.
 
+### Four of you: two a side
+
+Host a room, pick **Two a side** in the lobby, and send the link to all three of
+them. The first two in share a colony with you; the last two get the other one.
+
+A colony of two splits its four pads evenly, so you each hold two and cannot
+build on your partner's. You each bring your own five ants and your own queen,
+so a side fields two queens. The colour comes from whoever sat down first on
+each side, because a colony is one colour.
+
+One number changes for team play: a colony of two does not get to put twice as
+many ants on the board as a lone player. Each of you can field 37 rather than
+55, so a side tops out at 74 instead of 110. Without that, four purses feeding
+one board peaked at 201 ants, and a frame at that count costs enough to drop
+well under 60fps.
+
+Expect a scrappier game than 1v1. Twice as many raiders meet in the lanes, so
+far more of them die there: about 15% reach a nest against 32% in a duel.
+Matches still land around five minutes.
+
 ### Playing with someone in the same house
 
 ```bash

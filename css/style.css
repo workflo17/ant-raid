@@ -354,6 +354,16 @@ input {
 .cpick .cn { font-size: 11px; font-weight: 800; }
 .cpick.on .sw { box-shadow: 0 0 0 3px var(--cream), 0 0 0 5px var(--ink); }
 .seat[style*="--seat-color"] .dot { background: var(--seat-color); }
+/* in Two a side the four chairs are two colonies, so the halves get a seam
+   rather than reading as one list of names */
+.seat.seam { margin-top: 10px; position: relative; }
+.seat.seam::before {
+  content: 'against';
+  position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink); opacity: .45;
+  background: var(--cream); padding: 0 8px;
+}
 .seat .qtag {
   font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
   background: rgba(43,26,16,.12); border-radius: 999px; padding: 1px 7px; margin-left: 6px;
