@@ -5,8 +5,7 @@
 import { Sim } from '../shared/sim.js';
 import { AiBrain } from '../shared/ai.js';
 import { DT, TUNING } from '../shared/data/board.js';
-import { RAIDER_IDS, DEFENDER_IDS } from '../shared/data/units.js';
-import { QUEEN_IDS } from '../shared/data/heroes.js';
+import { QUEEN_IDS, HERO } from '../shared/data/heroes.js';
 import { MAP_IDS } from '../shared/data/maps.js';
 
 const N = Number(process.argv[2] || 12);
@@ -36,7 +35,16 @@ function playMatch(seed, map) {
     brain.cmd = (c) => {
       const r = orig(c);
       if (r.ok) {
-        const name = c.unit || c.def || c.power || c.kind;
+        // KIND-QUALIFIED, or dead content hides in plain sight. The old key was
+        // `c.unit || c.def || ...`, which folded caste upgrades into the unit
+        // they upgrade and defender builds into the raider that shares their
+        // species name. The caste system spent a whole audit looking unbought
+        // because its purchases were filed under 'worker'.
+        const name = c.kind === 'send' ? `send:${c.unit}`
+          : c.kind === 'build' ? `build:${c.def}`
+          : c.kind === 'upgrade' ? `up:${c.unit}`
+          : c.kind === 'power' ? `power:${c.power}`
+          : c.kind;
         spend[key][name] = (spend[key][name] || 0) + 1;
       }
       return r;
@@ -105,12 +113,26 @@ console.log(`  first blood on both nests by ${fb.toFixed(0)}s`);
 const qs = results.flatMap((r) => r.queens);
 const fielded = qs.filter((q) => q.out);
 const meanLv = fielded.length ? fielded.reduce((s, q) => s + q.lv, 0) / fielded.length : 0;
-const reachedAbility = fielded.filter((q) => q.lv >= 3).length;
-console.log(`  queens fielded ${fielded.length}/${qs.length}  mean level ${meanLv.toFixed(2)}  reached level 3 ${reachedAbility}/${fielded.length}  mean falls ${(fielded.reduce((s, q) => s + q.falls, 0) / Math.max(1, fielded.length)).toFixed(1)}`);
+const reachedAbility = fielded.filter((q) => q.lv >= HERO.abilityAt).length;
+// ...and the ability only exists as content if fielded queens actually cast it.
+// The audit target is 80 percent of queens casting at least once per match.
+let cast = 0;
+for (const r of results) for (const side of ['A', 'B']) if ((r.spend[side].ability || 0) > 0) cast++;
+console.log(`  queens fielded ${fielded.length}/${qs.length}  mean level ${meanLv.toFixed(2)}  reached ability level ${reachedAbility}/${fielded.length}  cast at least once ${cast}/${fielded.length}  mean falls ${(fielded.reduce((s, q) => s + q.falls, 0) / Math.max(1, fielded.length)).toFixed(1)}`);
+
+// The health of the ROSTER, not just the match. One unit above ~40 percent of
+// sends means the purchase is solved and the other six are decoration; that is
+// exactly what the first audit found (worker at 68 percent, majoress at one
+// send in 24 matches) and what the eco flattening exists to prevent.
+const sends = Object.entries(spendTotals).filter(([k]) => k.startsWith('send:'));
+const totalSends = sends.reduce((s, [, v]) => s + v, 0);
+if (totalSends) {
+  const shares = sends.map(([k, v]) => `${k.slice(5)} ${(100 * v / totalSends).toFixed(0)}%`).join('  ');
+  console.log(`  send shares: ${shares}`);
+}
 console.log('\n  purchases across all matches:');
-const known = new Set([...RAIDER_IDS, ...DEFENDER_IDS]);
 for (const [k, v] of Object.entries(spendTotals).sort((x, y) => y[1] - x[1])) {
-  console.log(`    ${k.padEnd(10)} ${String(v).padStart(4)}  ${known.has(k) ? '' : '(power)'}`);
+  console.log(`    ${k.padEnd(16)} ${String(v).padStart(4)}`);
 }
 console.log('\n  per match:');
 for (const r of results) {
