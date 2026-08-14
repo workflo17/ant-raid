@@ -1,0 +1,20 @@
+# Render blueprint: point Render at this repo and it reads everything from here,
+# so there is nothing to fill in by hand and nothing to get wrong.
+#
+# The free plan sleeps after 15 minutes idle and takes about 50 seconds to wake,
+# so the first player to arrive waits. After that it is normal. Rooms live in
+# memory, so a sleep loses any open room and you make a new one.
+#
+# No PORT here on purpose: Render injects it, and server.js reads it.
+services:
+  - type: web
+    name: ant-raid
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      # websockets need a real Node process; 22 is current LTS
+      - key: NODE_VERSION
+        value: "22"

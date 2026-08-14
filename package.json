@@ -1,0 +1,24 @@
+{
+  "name": "ant-raid",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ant Raid \u2014 two ant colonies raid each other's nest across three lanes. Online 1v1 and co-op by room code, plus solo and hot-seat.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "lan": "node tools/lan.mjs",
+    "share": "node tools/share.mjs",
+    "dev": "node tools/dev.mjs",
+    "test": "node --test \"test/**/*.test.js\"",
+    "balance": "node tools/balance.js",
+    "mapcheck": "node tools/mapcheck.js",
+    "netcheck": "node tools/netcheck.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

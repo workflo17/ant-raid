@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#2b1a10">
+<title>Ant Raid: two colonies, one crumb</title>
+<meta name="description" content="Send ants down three roads at your friend's nest. Online 1v1 and co-op by room code, plus solo and hot-seat.">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ───────────────────────────── intro ───────────────────────────── -->
+<!-- The hero is the game itself: a real bot-vs-bot match plays behind this. -->
+<section id="screen-intro" class="screen">
+  <canvas id="intro-board" width="960" height="640" aria-hidden="true"></canvas>
+  <div class="intro-scrim" aria-hidden="true"></div>
+
+  <div class="intro-wrap">
+    <div class="intro-plate">
+      <h1 class="logo"><span class="foil">ANT RAID</span></h1>
+      <p class="sub">Two colonies. Three roads. One crumb worth fighting over.</p>
+      <div class="intro-actions">
+        <button class="big ember" id="intro-play">
+          <span class="big-label">Play</span>
+          <span class="big-sub">Pick a board and go</span>
+        </button>
+        <button class="big frost" id="intro-code">
+          <span class="big-label">I have a room code</span>
+          <span class="big-sub">A friend sent you one</span>
+        </button>
+      </div>
+      <p class="record" id="intro-record"></p>
+    </div>
+
+    <ul class="intro-facts">
+      <li>Send ants down one of three roads. They walk until something stops them.</li>
+      <li>Raiding is your income. Sitting still earns you nothing.</li>
+      <li>One queen each, and she levels on the kills she helps land.</li>
+    </ul>
+  </div>
+
+  <p class="intro-live" aria-hidden="true"><i></i>Two bot colonies, playing right now</p>
+</section>
+
+<!-- ───────────────────────────── title ───────────────────────────── -->
+<section id="screen-title" class="screen">
+  <div class="title-card">
+    <h1 class="logo"><span class="foil">ANT RAID</span></h1>
+    <p class="sub">Two colonies. Three roads. One crumb worth fighting over.</p>
+
+    <canvas id="title-canvas" width="520" height="180" aria-hidden="true"></canvas>
+
+    <div class="name-row">
+      <label for="name">Your colony</label>
+      <input id="name" name="colony" maxlength="16" placeholder="Ember"
+             autocomplete="off" spellcheck="false" enterkeyhint="done">
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">Board</span>
+      <div class="maps" id="map-strip"></div>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">What you pack <em id="pack-count">0 of 5</em></span>
+      <div class="packs" id="pack-strip"></div>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">Your queen <em>one hero ant, she levels on kills</em></span>
+      <div class="packs queens" id="queen-strip"></div>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">Colony colour</span>
+      <div class="colors" id="color-strip"></div>
+    </div>
+
+    <div class="menu-grid">
+      <button class="big ember" data-go="host">
+        <span class="big-label">Play with a friend</span>
+        <span class="big-sub">Get a room code to send them</span>
+      </button>
+      <button class="big frost" data-go="join">
+        <span class="big-label">Join a raid</span>
+        <span class="big-sub">You have a code from a friend</span>
+      </button>
+      <button class="big" data-go="solo">
+        <span class="big-label">Solo</span>
+        <span class="big-sub">Raid a bot colony</span>
+      </button>
+      <button class="big" data-go="hotseat">
+        <span class="big-label">Hot-seat</span>
+        <span class="big-sub">Two of you, one screen</span>
+      </button>
+    </div>
+
+    <div id="join-row" class="join-row hidden">
+      <input id="join-code" name="code" maxlength="4" placeholder="FIG7"
+             autocomplete="off" spellcheck="false" inputmode="text"
+             autocapitalize="characters" enterkeyhint="go" aria-label="Room code, four letters">
+      <button class="pill go" id="join-go">Join</button>
+      <button class="pill quiet" id="join-cancel">Back</button>
+    </div>
+
+    <div id="solo-row" class="solo-row hidden">
+      <span class="row-label">How mean should it be?</span>
+      <div class="seg" role="group" aria-label="Difficulty">
+        <button class="seg-btn" data-diff="easy">Easy</button>
+        <button class="seg-btn on" data-diff="normal">Normal</button>
+        <button class="seg-btn" data-diff="hard">Hard</button>
+      </div>
+      <button class="pill go" id="solo-go">Start the raid</button>
+      <button class="pill quiet" id="solo-cancel">Back</button>
+    </div>
+
+    <p class="record" id="record-line"></p>
+
+    <p class="fineprint">
+      Ants, sounds and type carried over from <strong>Grubs&nbsp;TD</strong>.
+      Foley by Kenney (CC0), Baloo&nbsp;2 by Ek Type (SIL OFL).
+    </p>
+  </div>
+</section>
+
+<!-- ───────────────────────────── lobby ───────────────────────────── -->
+<section id="screen-lobby" class="screen hidden">
+  <div class="title-card narrow">
+    <h2 class="room-h">Room</h2>
+    <div class="code-plate">
+      <span id="room-code">····</span>
+    </div>
+
+    <!-- The link is shown, not hidden behind a button: a host needs to see how
+         far it actually reaches before they send it to somebody. -->
+    <div class="sharebox" id="sharebox">
+      <span class="reach" id="share-reach"></span>
+      <div class="share-row">
+        <input id="share-link" type="url" readonly aria-label="Room link"
+               autocomplete="off" spellcheck="false" translate="no">
+        <button class="pill quiet" id="copy-link">Copy</button>
+      </div>
+      <p class="share-note" id="share-note"></p>
+    </div>
+
+    <p class="sub" id="lobby-hint">Send that link to your friend. The raid starts when you say so.</p>
+
+    <ul class="seats" id="seats"></ul>
+
+    <div class="board-pick">
+      <span class="row-label">What you pack <em id="lobby-pack-count">0 of 5</em></span>
+      <div class="packs" id="lobby-pack-strip"></div>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">Your queen</span>
+      <div class="packs queens" id="lobby-queen-strip"></div>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">Colony colour <em>if you both pick the same, they get the next one</em></span>
+      <div class="colors" id="lobby-color-strip"></div>
+    </div>
+
+    <div class="board-pick lobby-maps" id="lobby-map-block">
+      <span class="row-label">Board</span>
+      <div class="maps" id="lobby-map-strip"></div>
+    </div>
+
+    <div class="mode-block" id="mode-block">
+      <span class="row-label">Mode</span>
+      <div class="seg" role="group" aria-label="Mode">
+        <button class="seg-btn on" data-mode="versus">Against each other</button>
+        <button class="seg-btn" data-mode="coop">Together vs a bot</button>
+      </div>
+    </div>
+
+    <button class="pill go wide" id="lobby-start" disabled>Waiting for a second colony</button>
+    <button class="pill quiet" id="lobby-leave">Leave</button>
+  </div>
+</section>
+
+<!-- ───────────────────────────── game ───────────────────────────── -->
+<section id="screen-game" class="screen hidden">
+
+  <header class="nestbar">
+    <div class="nest ember" id="nest-0">
+      <span class="nest-name">Ember</span>
+      <div class="bar"><i></i></div>
+      <span class="nest-hp">100</span>
+    </div>
+    <div class="clock"><span id="clock">0:00</span><small id="clock-note"></small></div>
+    <div class="nest frost right" id="nest-1">
+      <span class="nest-hp">100</span>
+      <div class="bar"><i></i></div>
+      <span class="nest-name">Frost</span>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="rail" id="rail-0" aria-label="Lanes"></div>
+    <div class="board-wrap">
+      <canvas id="board" width="960" height="640" aria-label="The picnic table. Three ant trails run between the two nests."></canvas>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <div class="padmenu hidden" id="padmenu" role="dialog" aria-label="Build a defender"></div>
+    </div>
+    <div class="rail right hidden" id="rail-1" aria-label="Lanes, second player"></div>
+  </main>
+
+  <footer class="dock">
+    <div class="hud" id="hud-0"></div>
+    <div class="hud right hidden" id="hud-1"></div>
+  </footer>
+
+  <div class="emotebar" id="emotebar" role="group" aria-label="Say something"></div>
+  <button class="pill quiet leave" id="game-leave">Leave</button>
+</section>
+
+<!-- ───────────────────────────── result ───────────────────────────── -->
+<section id="screen-over" class="screen hidden">
+  <div class="title-card narrow">
+    <h2 class="verdict" id="verdict">…</h2>
+    <p class="sub" id="verdict-why"></p>
+    <canvas id="result-card" class="result-card" aria-label="A card showing how the match went"></canvas>
+    <p class="record" id="over-record"></p>
+    <table class="scoretable" id="scoretable"></table>
+    <div class="over-actions">
+      <button class="pill go" id="again">Play again</button>
+      <button class="pill" id="share">Send it to them</button>
+    </div>
+    <button class="pill quiet" id="over-leave">Back to the table</button>
+  </div>
+</section>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
