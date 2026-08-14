@@ -691,7 +691,7 @@ function wireDriver(seatSpecs, netIndex) {
 
   driver.on('nope', (why) => toast(why));
   driver.on('over', (m) => showResult(m));
-  driver.on('emote', (m) => showEmote(m.team, m.e));
+  driver.on('emote', (m) => showEmote(m.team, m.e, m.at ?? -1));
   buildEmoteBar(seatSpecs[0]?.seat ?? 0);
 
   // a colony can be two people, so name it after everyone holding it rather
@@ -909,7 +909,18 @@ function buildEmoteBar(seat) {
     b.title = e.text;
     b.setAttribute('aria-label', `Say: ${e.text}`);
     b.innerHTML = `<span class="eg" aria-hidden="true">${e.glyph}</span><span class="et">${e.text}</span>`;
-    b.onclick = () => driver?.emote?.(seat, i);
+    b.onclick = () => {
+      // On a ring the aimed lane already names a neighbour, so the signal goes
+      // to whoever your selected road runs to: no picker, no extra tap. On a
+      // duelling board there is only one possible audience and `at` stays home.
+      let at;
+      const h = huds.find((x) => x.seat === seat);
+      if (h && MAP && (MAP.teams ?? 2) > 2) {
+        const dir = MAP.laneSideFor(h.lane, h.team);
+        if (dir) at = MAP.laneFoe(h.lane, dir);
+      }
+      driver?.emote?.(seat, i, at);
+    };
     el.appendChild(b);
   });
 }

@@ -17,6 +17,15 @@ export const EMOTES = [
   { id: 'watch', glyph: '▶', text: 'Watch this' },
   { id: 'help', glyph: '⚑', text: 'Help' },
   { id: 'gg', glyph: '♥', text: 'Good game' },
+  // The signals. Six colonies with two neighbours each is a social game with no
+  // table talk: these three are the table talk, and they stay indexed entries
+  // in a fixed list for exactly the reason everything above does. On a ring a
+  // signal is delivered TO a colony (the one your aimed lane runs to) and the
+  // bubble lands on their nest in your colour, so "you are next" arrives as a
+  // threat from somebody in particular.
+  { id: 'truce', glyph: '⚐', text: 'Truce?' },
+  { id: 'next', glyph: '✕', text: 'You are next' },
+  { id: 'off', glyph: '⊘', text: 'The truce is off' },
 ];
 
 /** How long a bubble stays up, and the least time between two of them. */

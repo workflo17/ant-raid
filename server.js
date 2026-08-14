@@ -538,7 +538,15 @@ wss.on('connection', (ws) => {
         const now = Date.now();
         if (now - (seat.lastEmote || 0) < EMOTE_GAP) return;
         seat.lastEmote = now;
-        room.broadcast({ t: 'emote', team: room.teamFor(room.seats.indexOf(seat)), e: m.e });
+        const team = room.teamFor(room.seats.indexOf(seat));
+        // An optional TARGET colony, for the signal emotes on a ring. Validated
+        // like everything client-sent: an integer naming a real other colony in
+        // a running match, or it is quietly stripped back to an untargeted
+        // emote. Never rejected: a stale target is not worth an error.
+        const at = Number.isInteger(m.at) && room.sim && room.sim.teamCount > 2
+          && m.at >= 0 && m.at < room.sim.teamCount && m.at !== team
+          ? m.at : -1;
+        room.broadcast({ t: 'emote', team, e: m.e, at });
         break;
       }
 

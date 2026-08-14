@@ -90,6 +90,11 @@ export const TUNING = {
   // long enough that a healthy colony still has to be raided down.
   ffaSuddenDeathAt: 360,
   ffaSuddenDeathDps: 3,
+  // What landing the killing bite on a nest pays, free-for-all only. Sized
+  // between a wildlife bounty (150 to 300) and a Honeypot (260): enough that
+  // finishing the neighbour you softened is YOUR prize rather than a favour to
+  // the colony on their far side, not enough to decide the match by itself.
+  ffaFinishTribute: 220,
   matchCap: 720,
   // a raider that walks into a friendly's back slows to its pace instead of
   // stacking on top of it — this is what makes a push look like a column

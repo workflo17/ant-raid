@@ -998,6 +998,41 @@ test('a client joining mid-match does not eat everybody else\'s effects', () => 
   assert.equal(sim.fx.length, 0, 'a normal snapshot no longer drains');
 });
 
+test('finishing a colony pays the finisher, in a free-for-all only', () => {
+  const sim = ring(4);
+  sim.nestHp[1] = 3;
+  const road = sim.map.lanesFor(0).find((l) => sim.map.lanes[l].ends.includes(1));
+  sim.command('P0', { kind: 'send', unit: 'trapjaw', lane: road });
+  const ant = sim.units.find((u) => u.team === 0);
+  ant.d = sim.map.laneLen[road];
+  const before = sim.players[0].sugar;
+  sim.step(DT);
+  assert.equal(sim.out[1], true, 'the nest did not fall');
+  const gained = sim.players[0].sugar - before;
+  assert.ok(gained >= TUNING.ffaFinishTribute, `the finisher got ${gained.toFixed(1)}`);
+  assert.equal(sim.over, false, 'the ring match ended with two colonies still standing');
+
+  // a duel pays nothing: finishing the only opponent simply ends the match
+  const d = duel();
+  d.nestHp[1] = 3;
+  d.command('A', { kind: 'send', unit: 'worker', lane: 1 });
+  const w = d.units.find((u) => u.team === 0);
+  w.d = d.map.laneLen[1];
+  const beforeA = d.playerById('A').sugar;
+  d.step(DT);
+  assert.equal(d.over, true);
+  assert.ok(d.playerById('A').sugar - beforeA < TUNING.ffaFinishTribute * 0.5,
+    'a duellist collected a free-for-all tribute');
+});
+
+test('the signal emotes exist, and the list stays index-safe', () => {
+  assert.ok(EMOTES.length >= 9, 'the three signals are missing');
+  assert.equal(new Set(EMOTES.map((e) => e.id)).size, EMOTES.length, 'duplicate emote ids');
+  for (const e of EMOTES) assert.ok(e.glyph && e.text, `${e.id} is missing its face`);
+  assert.equal(isEmote(EMOTES.length), false, 'one past the end passed validation');
+  assert.equal(isEmote(EMOTES.length - 1), true);
+});
+
 test('a colony can only aim a power down its own roads, and walls its own half', () => {
   const sim = ring(4);
   const mine = sim.map.lanesFor(2);

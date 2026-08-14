@@ -121,9 +121,12 @@ export class LocalDriver extends Emitter {
   }
 
   /** No socket to go round, so it comes straight back to the same page. */
-  emote(seat, e) {
+  emote(seat, e, at) {
     const p = this.sim.players[seat];
-    this.emit('emote', { team: p ? p.team : 0, e });
+    const team = p ? p.team : 0;
+    // same sanity rules the server applies: a target is a real other colony
+    const ok = Number.isInteger(at) && at >= 0 && at < this.sim.teamCount && at !== team;
+    this.emit('emote', { team, e, at: ok ? at : -1 });
   }
 
   view() {
@@ -229,7 +232,7 @@ export class NetDriver extends Emitter {
   setMap(map) { this.tx({ t: 'mode', map }); }
   startMatch() { this.tx({ t: 'start' }); }
   rematch() { this.tx({ t: 'rematch' }); }
-  emote(seat, e) { this.tx({ t: 'emote', e }); }
+  emote(seat, e, at) { this.tx(Number.isInteger(at) ? { t: 'emote', e, at } : { t: 'emote', e }); }
 
   /** `seat` is ignored online: the server only ever lets you move your own colony. */
   send(seat, cmd) { this.tx({ t: 'cmd', c: cmd }); return { ok: true }; }

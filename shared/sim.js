@@ -894,6 +894,20 @@ export class Sim {
         // whether raiding pays in a free-for-all is built on it. The client
         // destructures four and ignores the rest.
         this.fx.push([FX.NEST, n.x, n.y, Math.round(dmg), u.team]);
+        // THE FINISHER'S TRIBUTE, free-for-all only. Landing the kill on a
+        // colony softens you up for whoever is on your far side, which is the
+        // ring's whole dilemma; without a prize, the smart play is to let your
+        // OTHER neighbour do the finishing. The audit measured the finisher
+        // going on to win above chance already, so the mode rewards commitment;
+        // this pays it in sugar as well, so choosing a victim and seeing it
+        // through is a strategy rather than a favour to the colony behind you.
+        // Two colonies never see it: finishing a duel ends the match.
+        if (this.teamCount > 2 && this.nestHp[foe] <= 0 && dmg > 0) {
+          for (const q of this.players) {
+            if (q.team === u.team) q.sugar += TUNING.ffaFinishTribute;
+          }
+          this.fx.push([FX.BOUNTY, n.x, n.y, TUNING.ffaFinishTribute]);
+        }
         if (def.blast) this._blast(n.x, n.y, def.blast.r, def.blast.damage * dmgMul, u.team, u.owner);
         u.hp = 0;
       }

@@ -145,20 +145,27 @@ function stampScorch(x, y, r) {
 // Bubbles over a colony's nest. Never simulation state: they arrive from the
 // driver, sit here for a couple of seconds and are gone.
 
-const bubbles = [null, null];
-export function showEmote(team, index) {
+// One slot per COLONY, not a fixed pair: the old `[null, null]` silently
+// dropped every emote from colonies 2 to 5 on a ring board.
+let bubbles = [];
+export function showEmote(team, index, at = -1) {
   const e = EMOTES[index];
-  if (!e || team !== 0 && team !== 1) return;
-  bubbles[team] = { e, until: time + EMOTE_SHOW, born: time };
+  if (!e || !MAP || !MAP.nests[team]) return;
+  // A targeted signal is DELIVERED: the bubble lands on the target's nest,
+  // tinted in the sender's colour, which in this game is the whole of who they
+  // are. "You are next" arriving on your own doorstep in somebody's colours
+  // needs no further attribution.
+  const target = at >= 0 && at !== team && MAP.nests[at] ? at : -1;
+  bubbles[team] = { e, target, until: time + EMOTE_SHOW, born: time };
 }
-export function clearEmotes() { bubbles[0] = bubbles[1] = null; }
+export function clearEmotes() { bubbles = []; }
 
 function drawEmotes() {
-  for (let team = 0; team < 2; team++) {
+  for (let team = 0; team < bubbles.length; team++) {
     const b = bubbles[team];
     if (!b) continue;
     if (time > b.until) { bubbles[team] = null; continue; }
-    const n = MAP.nests[team];
+    const n = MAP.nests[b.target >= 0 ? b.target : team];
     const age = time - b.born;
     // a short pop on the way in, then it just sits there
     const grow = age < 0.16 ? 0.55 + (age / 0.16) * 0.45 : 1;
