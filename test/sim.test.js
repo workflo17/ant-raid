@@ -406,6 +406,52 @@ test('one strong trail per colony: marking a new road costs the old one', () => 
   assert.equal(sim.pher[1][0], theirs, 'one colony marking decayed the OTHER colony\'s trail');
 });
 
+test('trail orders: sends follow the scent, and a fork takes turns', () => {
+  const sim = duel();
+  const a = sim.playerById('A');
+  a.sugar = 9999;
+
+  // no trail yet: the order has nothing to follow and says so
+  assert.match(sim.command('A', { kind: 'send', unit: 'worker', lane: 'trail' }).why, /lay scent first/);
+
+  // lay a trail on lane 0 and the colony follows it
+  sim.command('A', { kind: 'mark', lane: 0 });
+  assert.equal(sim.command('A', { kind: 'send', unit: 'worker', lane: 'trail' }).ok, true);
+  assert.ok(sim.units.every((u) => u.lane === 0), 'the send did not follow the trail');
+
+  // fork toward lane 2: both branches live, both capped below a committed trail
+  a.markCd = 0;
+  assert.equal(sim.command('A', { kind: 'fork', lane: 2 }).ok, true);
+  const t = sim.trailLanes(0);
+  assert.equal(t.length, 2, `expected a fork, got ${t.join('/')}`);
+  assert.ok(sim.pher[0][0] <= PHEROMONE.forkCap + 1e-9 && sim.pher[0][2] <= PHEROMONE.forkCap + 1e-9,
+    'a fork branch outran forkCap');
+
+  // sends alternate down the branches
+  sim.units.length = 0;
+  sim.command('A', { kind: 'send', unit: 'worker', lane: 'trail' });
+  sim.command('A', { kind: 'send', unit: 'worker', lane: 'trail' });
+  const lanes = new Set(sim.units.map((u) => u.lane));
+  assert.deepEqual([...lanes].sort(), [0, 2], `the fork did not split the column: ${[...lanes]}`);
+
+  // marking OUTSIDE the fork collapses it back to one road
+  a.markCd = 0;
+  sim.command('A', { kind: 'mark', lane: 1 });
+  assert.deepEqual(sim.trailLanes(0), [1], 'the fork survived a new declaration');
+
+  // fork refusals: no third branch, no foreign roads, no forking the trail itself
+  a.markCd = 0;
+  assert.match(sim.command('A', { kind: 'fork', lane: 1 }).why, /already part of the trail/);
+  const r4 = ring(4);
+  r4.players[0].sugar = 9999;
+  const notMine = r4.map.lanes.find((l) => !l.ends.includes(0)).id;
+  assert.match(r4.command('P0', { kind: 'fork', lane: notMine }).why, /does not run from your nest/);
+
+  // junk lanes still take the numeric path they always took
+  assert.equal(sim.command('A', { kind: 'send', unit: 'worker', lane: 'TRAIL' }).ok, true);
+  assert.equal(sim.units[sim.units.length - 1].lane, 0, "junk string did not fall through to `| 0`");
+});
+
 test('her ability is locked until the unlock level, then costs a cooldown and nothing else', () => {
   const sim = duel({ players: [{ id: 'A', name: 'A', team: 0, queen: 'melissa' }] });
   const a = sim.playerById('A');

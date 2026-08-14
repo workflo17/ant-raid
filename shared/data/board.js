@@ -172,7 +172,10 @@ export const suddenDeathFor = (teams) => (teams > 2
 export const PHEROMONE = {
   cost: 30,
   cooldown: 1.4,     // so a held key cannot pour the whole purse into one road
-  perMark: 0.34,     // how much one mark lays down, out of a maximum of 1
+  // One mark MUST clear reinforceCap, or the first mark a player ever lays
+  // leaves the road just under the trail threshold and the colony ignores the
+  // order they just gave. 0.34 against a cap of 0.35 did exactly that.
+  perMark: 0.4,
   decay: 0.055,      // strength lost per second with nobody walking it
   // An ant on the road tops it up, but only to reinforceCap. That ceiling is
   // the whole balance of the mechanic and it was wrong the first time: at 0.75
@@ -185,6 +188,12 @@ export const PHEROMONE = {
   //   stop marking            -> sags back to 0.35 while the column holds
   perAnt: 0.008,
   reinforceCap: 0.35,
+  // A FORKED trail: the one-trail rule's paid exception. Forking declares a
+  // second road, and both branches top out here instead of at 1.0, so splitting
+  // the colony costs peak speed on each branch. 0.7 keeps a branch clearly
+  // faster than a traffic-held road (0.35) and clearly slower than a committed
+  // single trail, which is the whole choice.
+  forkCap: 0.7,
   // Full strength is a quarter faster for that colony on that road. Swept 0.16
   // to 0.30 against the balance harness and breach rate barely moved (28.5% to
   // 30.8%, inside the run-to-run noise), so this is chosen for feel rather than

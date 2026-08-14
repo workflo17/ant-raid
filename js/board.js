@@ -367,7 +367,7 @@ export function draw(view, dt, ui) {
   drawParticles(c);
   drawEmotes();
 
-  if (ui?.aimLane != null) drawAim(ui.aimLane, ui.aimTeam ?? 0);
+  if (ui?.aimLane != null) drawAim(ui.aimLane, ui.aimTeam ?? 0, view);
 
   // and the air goes over everything, because it is between you and the board
   paintAir(c, T, time, dt, W, H);
@@ -733,8 +733,18 @@ function drawNestArt(view) {
   }
 }
 
-/** Where the next thing you buy is going. */
-function drawAim(lane, team) {
+/**
+ * Where the next thing you buy is going. Aimed at 'trail', that is wherever
+ * the colony's scent says: the strongest road, or BOTH branches of a fork,
+ * which is the honest answer since sends will take turns down them. No trail
+ * yet means nothing to stroke, and the trail chip is already showing why.
+ */
+function drawAim(lane, team, view) {
+  const lanes = lane === 'trail'
+    ? (view?.pher?.[team] || []).map((v, l) => [v, l])
+      .filter(([v]) => v > PHEROMONE.reinforceCap).map(([, l]) => l)
+    : [lane];
+  if (!lanes.length || !MAP.lanes[lanes[0]]) return;
   c.save();
   c.globalAlpha = 0.35 + Math.sin(time * 6) * 0.12;
   c.strokeStyle = teamTint(team).accent;
@@ -742,7 +752,7 @@ function drawAim(lane, team) {
   c.setLineDash([14, 10]);
   c.lineDashOffset = -time * 40 * (team === 0 ? 1 : -1);
   c.lineCap = 'round'; c.lineJoin = 'round';
-  strokePts(c, MAP.lanes[lane].points);
+  for (const l of lanes) strokePts(c, MAP.lanes[l].points);
   c.restore();
 }
 

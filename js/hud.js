@@ -77,6 +77,24 @@ export class Hud {
       this.railEl.appendChild(b);
       return b;
     });
+
+    // THE TRAIL CHIP: aim at the scent itself rather than a road. Everything
+    // aimed while it is on follows the colony's strongest trail, and a forked
+    // trail takes turns, so one mark re-aims every send that follows. It sits
+    // under the roads because it IS a road, just one the colony picks for you.
+    const t = document.createElement('button');
+    t.className = 'lane-chip trail-chip';
+    t.type = 'button';
+    t.setAttribute('aria-pressed', 'false');
+    t.innerHTML =
+      `<span class="lane-key">${this.keys ? 'T' : '≋'}</span>` +
+      `<span class="lane-name">Follow the trail</span>` +
+      `<span class="lane-press"><i style="width:0"></i><b style="width:0"></b></span>` +
+      `<span class="lane-scent"><i style="width:0"></i></span>`;
+    t.title = 'Aim at your scent: sends walk the strongest trail, and a fork takes turns';
+    t.onclick = () => this.aim('trail');
+    this.railEl.appendChild(t);
+    this.trailChip = t;
   }
 
   buildDock() {
@@ -167,6 +185,23 @@ export class Hud {
     pw.appendChild(mk);
     this.markEl = mk;
 
+    // Fork sits beside the trail button it modifies. Same cost, same cooldown,
+    // and its price is baked into the mechanic: both branches top out lower
+    // than a committed trail, so the button is a choice and not an upgrade.
+    const fk = document.createElement('button');
+    fk.className = 'pw fork';
+    fk.type = 'button';
+    fk.title = `Fork the trail toward the aimed road, ${PHEROMONE.cost} sugar. `
+      + `The colony then splits: sends that follow the scent take turns down the two branches, `
+      + `and both top out lower than a single committed trail.`;
+    fk.setAttribute('aria-label', `Fork the trail, ${PHEROMONE.cost} sugar`);
+    fk.innerHTML = `<span class="glyph" aria-hidden="true">⑂</span>` +
+      `<span class="pk">${this.keys ? 'F' : 'Fork'}</span>` +
+      `<span class="cd hidden">0</span>`;
+    fk.onclick = () => this.fork();
+    pw.appendChild(fk);
+    this.forkEl = fk;
+
     this.hudEl.appendChild(pw);
     this.buildQueen();
   }
@@ -254,13 +289,18 @@ export class Hud {
   }
 
   aim(lane) {
-    // `lane` is a real lane id, which on a ring board is not its rail position
+    // `lane` is a real lane id, which on a ring board is not its rail position,
+    // or the literal 'trail' for the follow-the-scent chip
     this.lane = lane;
     this.chips.forEach((b, i) => {
       const on = this.lanes[i].id === lane;
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', String(on));
     });
+    if (this.trailChip) {
+      this.trailChip.classList.toggle('on', lane === 'trail');
+      this.trailChip.setAttribute('aria-pressed', String(lane === 'trail'));
+    }
   }
 
   buy(id) {
@@ -275,6 +315,7 @@ export class Hud {
   cast(id) { this.onCmd(this.seat, { kind: 'power', power: id, lane: this.lane }); }
 
   mark() { this.onCmd(this.seat, { kind: 'mark', lane: this.lane }); }
+  fork() { this.onCmd(this.seat, { kind: 'fork', lane: this.lane }); }
 
   upgrade(id) { this.onCmd(this.seat, { kind: 'upgrade', unit: id }); }
 
@@ -291,6 +332,8 @@ export class Hud {
     if (k === 'x') { this.sendQueen(); return true; }
     if (k === 'c') { this.ability(); return true; }
     if (k === 'r') { this.mark(); return true; }
+    if (k === 'f') { this.fork(); return true; }
+    if (k === 't') { this.aim('trail'); return true; }
     const slot = '12345678'.indexOf(e.key);
     const unit = slot >= 0 ? this.roster[slot] : null;
     if (unit) {
@@ -365,6 +408,29 @@ export class Hud {
       const full = (mine[this.lane] || 0) >= 1;
       this.markEl.classList.toggle('broke', p.s < PHEROMONE.cost || cd > 0 || full);
       this.markEl.setAttribute('aria-disabled', String(p.s < PHEROMONE.cost || cd > 0 || full));
+
+      // The fork wants a committed trail, a NAMED target road that is not part
+      // of it, and the same purse and cooldown as a mark. Mirrors Sim._fork so
+      // the button greys exactly when the command would refuse.
+      if (this.forkEl) {
+        const members = this.lanes.filter((L) => (mine[L.id] || 0) > PHEROMONE.reinforceCap);
+        const canFork = members.length === 1
+          && this.lane !== 'trail'
+          && members[0].id !== this.lane
+          && p.s >= PHEROMONE.cost && cd <= 0;
+        this.forkEl.classList.toggle('broke', !canFork);
+        this.forkEl.setAttribute('aria-disabled', String(!canFork));
+        const fcd = this.forkEl.querySelector('.cd');
+        fcd.classList.toggle('hidden', cd <= 0);
+        if (cd > 0) fcd.textContent = cd.toFixed(1);
+      }
+      // the trail chip fades with the scent: no trail, nothing to follow
+      if (this.trailChip) {
+        const strongest = Math.max(0, ...this.lanes.map((L) => mine[L.id] || 0));
+        const live = strongest > PHEROMONE.reinforceCap;
+        this.trailChip.classList.toggle('broke', !live);
+        this.trailChip.querySelector('.lane-scent i').style.width = `${strongest * 100}%`;
+      }
     }
 
     const press = lanePressure(view, this.map.lanes.length, view.players?.length || 2);

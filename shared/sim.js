@@ -142,6 +142,7 @@ export class Sim {
       abilityCd: 0,
       heroMoveCd: 0,
       markCd: 0,
+      trailFlip: 0,  // which branch of a forked trail the next send follows
       spawns: 0,   // per-colony, so the sideways fan mirrors (see _addUnit)
     };
   }
@@ -293,8 +294,42 @@ export class Sim {
       case 'queen': return this._queen(p, cmd);
       case 'ability': return this._ability(p);
       case 'mark': return this._mark(p, cmd);
+      case 'fork': return this._fork(p, cmd);
       default: return { ok: false, why: 'unknown command' };
     }
+  }
+
+  /**
+   * The roads this colony's scent currently declares: every own lane held
+   * above what traffic alone can reach, strongest first, lane id breaking
+   * ties so the order is deterministic. One entry is a committed trail, two
+   * is a fork, none means the colony has not spoken.
+   *
+   * Derived from `pher` rather than stored, which is what lets a fork
+   * dissolve the way scent should: stop feeding a branch and it fades below
+   * the threshold and simply stops being an order.
+   */
+  trailLanes(team) {
+    const out = [];
+    for (let l = 0; l < this.map.lanes.length; l++) {
+      if (this.pher[team][l] > PHEROMONE.reinforceCap && this.map.laneSideFor(l, team)) out.push(l);
+    }
+    return out.sort((a, b) => this.pher[team][b] - this.pher[team][a] || a - b);
+  }
+
+  /**
+   * TRAIL ORDERS. `lane: 'trail'` says "follow the scent": the send goes down
+   * the colony's declared trail, and with a fork the branches take turns, so
+   * one mark re-aims the whole colony and a fork splits the column without a
+   * single per-send lane choice. The literal string and nothing else: every
+   * other value falls through to the numeric path exactly as before.
+   */
+  _trailLane(p, cmd, flip = false) {
+    if (cmd.lane !== 'trail') return null;
+    const t = this.trailLanes(p.team);
+    if (!t.length) return { ok: false, why: 'no trail to follow, lay scent first' };
+    // only a SEND takes turns down a fork; a mark feeds the strongest branch
+    return { lane: flip && t.length > 1 ? t[(p.trailFlip++) % 2] : t[0] };
   }
 
   _send(p, cmd) {
@@ -304,7 +339,9 @@ export class Sim {
     // built with this colony's upgrades baked in, so an upgrade bought later
     // never retroactively rewrites a fight that is already resolving
     const def = castedRaider(cmd.unit, p.castes[cmd.unit] || 0);
-    const lane = cmd.lane | 0;
+    const followed = this._trailLane(p, cmd, true);
+    if (followed && followed.ok === false) return followed;
+    const lane = followed ? followed.lane : cmd.lane | 0;
     if (!p.roster.includes(cmd.unit)) return { ok: false, why: `you did not pack ${def.name}` };
     if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
     // on a ring board most roads do not start at your door
@@ -393,7 +430,10 @@ export class Sim {
    * but has to wait out the timer, which is the whole price of losing her.
    */
   _queen(p, cmd) {
-    const lane = cmd.lane | 0;
+    // she follows the scent too: aimed at the trail, she walks its strongest branch
+    const followed = this._trailLane(p, cmd);
+    if (followed && followed.ok === false) return followed;
+    const lane = followed ? followed.lane : cmd.lane | 0;
     if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
     // she is already out: this is a recall. Two conditions, both readable at a
     // glance from the board — she has to be out of a fight, and she has to not
@@ -548,7 +588,9 @@ export class Sim {
   _power(p, cmd) {
     if (!isPower(cmd.power)) return { ok: false, why: 'no such power' };
     const def = POWERS[cmd.power];
-    const lane = cmd.lane | 0;
+    const followed = this._trailLane(p, cmd);
+    if (followed && followed.ok === false) return followed;
+    const lane = followed ? followed.lane : cmd.lane | 0;
     if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
     // A power lands on ONE ROAD, and the roads you may act on are the ones that
     // run from your nest — the same rule `send` and `queen` already apply, and
@@ -593,7 +635,10 @@ export class Sim {
    * to do with the twenty seconds between two purchases.
    */
   _mark(p, cmd) {
-    const lane = cmd.lane | 0;
+    // marking 'the trail' tops up the strongest branch rather than naming a road
+    const followed = this._trailLane(p, cmd);
+    if (followed && followed.ok === false) return followed;
+    const lane = followed ? followed.lane : cmd.lane | 0;
     if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
     // your own roads only: a trail on a road none of your ants can walk is
     // thirty sugar laid on the ground for nobody
@@ -601,27 +646,69 @@ export class Sim {
     if (!dir) return { ok: false, why: 'that road does not run from your nest' };
     if (p.markCd > 0) return { ok: false, why: 'the scent is still settling' };
     if (p.sugar < PHEROMONE.cost) return { ok: false, why: 'not enough sugar' };
-    if (this.pher[p.team][lane] >= 1) return { ok: false, why: 'that road is as strong as it gets' };
+    // ONE STRONG TRAIL PER COLONY, with the fork as its paid exception.
+    // Marking a road that is not part of the current trail collapses everything
+    // back to that single road, so scent is a declaration of where the colony
+    // is going rather than a coat of paint you keep every road wet with.
+    // Marking a branch of a fork feeds that branch and leaves its partner
+    // alone, but a branch tops out at forkCap: a split colony is slower on
+    // both roads than a committed one is on its one, which is the choice.
+    //
+    // The one-trail rule exists because of a measurement: marking was the
+    // second most performed action in the game and ALWAYS correct, a chore
+    // wearing a mechanic's clothes. Now the press asks which road is THE road,
+    // and switching answers costs the trail you had.
+    const members = this.trailLanes(p.team);
+    const forked = members.length > 1 && members.includes(lane);
+    const cap = forked ? PHEROMONE.forkCap : 1;
+    if (this.pher[p.team][lane] >= cap) return { ok: false, why: 'that road is as strong as it gets' };
     p.sugar -= PHEROMONE.cost;
     p.spent += PHEROMONE.cost;
     p.markCd = PHEROMONE.cooldown;
-    // ONE STRONG TRAIL PER COLONY. Marking a road pulls every other road this
-    // colony has marked down to the level traffic alone can hold, so scent is a
-    // declaration of where the colony is going rather than a coat of paint you
-    // keep every road wet with. Before this rule, marking was the second most
-    // performed action in the game (1771 casts against 2957 sends of the top
-    // unit in a 24-match audit) and it was ALWAYS correct: press it whenever
-    // the cooldown allowed, on whatever road you were using. A button that is
-    // never wrong to press is a chore wearing a mechanic's clothes. Now the
-    // press asks a question, which road is THE road, and switching answers
-    // costs the trail you had.
     for (let l = 0; l < this.map.lanes.length; l++) {
-      if (l !== lane && this.pher[p.team][l] > PHEROMONE.reinforceCap) {
+      if (l === lane || (forked && members.includes(l))) continue;
+      if (this.pher[p.team][l] > PHEROMONE.reinforceCap) {
         this.pher[p.team][l] = PHEROMONE.reinforceCap;
       }
     }
-    this.pher[p.team][lane] = Math.min(1, this.pher[p.team][lane] + PHEROMONE.perMark);
+    this.pher[p.team][lane] = Math.min(cap, this.pher[p.team][lane] + PHEROMONE.perMark);
     const at = this.map.laneAt(lane, this.map.laneLen[lane] * (dir > 0 ? 0.2 : 0.8), scratch);
+    this.fx.push([FX.MARK, Math.round(at.x), Math.round(at.y), p.team]);
+    return { ok: true };
+  }
+
+  /**
+   * FORK THE TRAIL: split the colony down two roads at once.
+   *
+   * Requires a committed trail somewhere else, costs a mark, and caps BOTH
+   * branches at forkCap, so the fork trades peak speed on the main road for
+   * pressure on a second one. Sends aimed at 'trail' then take turns down the
+   * branches. Marking any road outside the fork collapses it back to a single
+   * trail; a branch nobody feeds fades below the threshold and stops being an
+   * order, the way scent should.
+   */
+  _fork(p, cmd) {
+    // forking needs a NAMED road: forking "the trail" toward itself means nothing
+    if (cmd.lane === 'trail') return { ok: false, why: 'aim at a road to fork toward' };
+    const lane = cmd.lane | 0;
+    if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
+    if (!this.map.laneSideFor(lane, p.team)) return { ok: false, why: 'that road does not run from your nest' };
+    if (p.markCd > 0) return { ok: false, why: 'the scent is still settling' };
+    if (p.sugar < PHEROMONE.cost) return { ok: false, why: 'not enough sugar' };
+    const members = this.trailLanes(p.team);
+    if (!members.length) return { ok: false, why: 'lay a trail first, then fork it' };
+    if (members.includes(lane)) return { ok: false, why: 'that road is already part of the trail' };
+    if (members.length > 1) return { ok: false, why: 'a colony can hold two roads, not three' };
+    p.sugar -= PHEROMONE.cost;
+    p.spent += PHEROMONE.cost;
+    p.markCd = PHEROMONE.cooldown;
+    // the committed trail gives up its peak to open the second branch
+    const main = members[0];
+    this.pher[p.team][main] = Math.min(this.pher[p.team][main], PHEROMONE.forkCap);
+    this.pher[p.team][lane] = Math.min(PHEROMONE.forkCap,
+      Math.max(this.pher[p.team][lane], PHEROMONE.reinforceCap) + PHEROMONE.perMark);
+    p.trailFlip = 0;
+    const at = this.map.laneAt(lane, this.map.laneLen[lane] * 0.5, scratch);
     this.fx.push([FX.MARK, Math.round(at.x), Math.round(at.y), p.team]);
     return { ok: true };
   }

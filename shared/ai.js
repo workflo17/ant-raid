@@ -109,6 +109,18 @@ export class AiBrain {
   get lanes() { return this.sim.map.lanes.length; }
   /** Which way this colony walks down a road: +1, -1, or 0 if it is not on it. */
   dirOn(lane) { return this.map.laneSideFor(lane, this.team); }
+
+  /**
+   * Say 'trail' instead of a lane number when the two are guaranteed to mean
+   * the same road. The bot then exercises the order path a human uses on every
+   * send it makes along its own trail, WITHOUT its choices changing: the
+   * substitution only happens when the colony's scent declares exactly the
+   * road the bot picked anyway. A fork or a faded trail falls back to numbers.
+   */
+  _laneArg(lane) {
+    const t = this.sim.trailLanes(this.team);
+    return t.length === 1 && t[0] === lane ? 'trail' : lane;
+  }
   /** Whose nest is at the far end of one of its own roads. Replaces `1 - me.team`. */
   foeOn(lane) { return this.map.laneFoe(lane, this.dirOn(lane)); }
 
@@ -208,10 +220,27 @@ export class AiBrain {
     // the bot re-mark every single think (2993 marks in 32 matches, more than it
     // bought of anything else); stopping at 0.34 made it never mark at all,
     // because a column reinforces past that within seconds.
-    if (this.sim.pher[me.team][lane] > 0.62) return;
-    let n = 0;
-    for (const u of this.sim.units) if (u.team === me.team && u.lane === lane && u.hp > 0) n++;
-    if (n >= 4) this.cmd({ kind: 'mark', lane });
+    if (this.sim.pher[me.team][lane] <= 0.62) {
+      let n = 0;
+      for (const u of this.sim.units) if (u.team === me.team && u.lane === lane && u.hp > 0) n++;
+      if (n >= 4) this.cmd({ kind: 'mark', lane });
+      return;
+    }
+    // FORK, ring boards only, and only when the colony genuinely has two
+    // fronts: the trail is committed to one neighbour and a real column of its
+    // own is already walking a road to the OTHER one. Then splitting the scent
+    // is describing what the colony is doing rather than a plan of its own,
+    // which keeps the bot's strategy untouched while the fork path gets played.
+    // A duelling board never reaches this: every road runs to the same enemy.
+    if (this.myLanes.length <= 3 || me.sugar < PHEROMONE.cost + 320) return;
+    const t = this.sim.trailLanes(me.team);
+    if (t.length !== 1 || t[0] !== lane) return;
+    for (const l of this.myLanes) {
+      if (l === lane || this.foeOn(l) === this.foeOn(lane)) continue;
+      let n = 0;
+      for (const u of this.sim.units) if (u.team === me.team && u.lane === l && u.hp > 0) n++;
+      if (n >= 4) { this.cmd({ kind: 'fork', lane: l }); return; }
+    }
   }
 
   // ---- how much enemy is standing in each of my lanes right now
@@ -577,7 +606,7 @@ export class AiBrain {
     for (let i = 0; i < packed.length; i++) {
       const k = packed[i];
       const cost = RAIDERS[k].cost;
-      if (me.sugar >= cost) { this.cmd({ kind: 'send', unit: k, lane }); return; }
+      if (me.sugar >= cost) { this.cmd({ kind: 'send', unit: k, lane: this._laneArg(lane) }); return; }
       // close to affording the thing it wants? hold the sugar this think instead
       // of spending it on chaff and never reaching the top of the list.
       if (i < 2 && me.sugar > cost * 0.6) return;
