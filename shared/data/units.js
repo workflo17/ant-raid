@@ -4,9 +4,23 @@
 //
 // raider  : damage/cooldown/speed in px/s, `range` compared along the lane
 //           eco         = sugar/sec this purchase permanently adds to YOUR income.
-//                         Raiding IS the economy: cheap chaff pays back well per
-//                         sugar spent, a Majoress barely at all. Sitting on your
-//                         hands earns you almost nothing, which is the whole point.
+//                         Raiding IS the economy. Sitting on your hands earns you
+//                         almost nothing, which is the whole point.
+//
+//                         ECO PER SUGAR IS NEARLY FLAT, and that is a measured
+//                         decision, not an oversight. The first table gave the
+//                         Worker 0.0158 eco per sugar against the Majoress's
+//                         0.0014, an elevenfold gap, and the game solved itself:
+//                         Worker was 62 percent of ALL sends across an
+//                         instrumented audit and the Majoress was sent once in
+//                         24 matches. When one unit is the best eco buy AND the
+//                         cheapest AND comes as a pair, the purchase decision is
+//                         a ritual. The ratios now run 0.0127 for chaff down to
+//                         0.0105 for the Majoress: a mild premium for the units
+//                         that die for their income, small enough that WHAT a
+//                         unit does in the fight decides the buy, not what it
+//                         pays. Re-run the audit probe after touching these;
+//                         the target is no unit above 40 percent of sends.
 //           siege       = nest damage dealt when it reaches the enemy nest
 //           count       = how many spawn per purchase
 //           vsDefender  = may also shoot pad defenders (melee raiders run past them)
@@ -17,8 +31,8 @@ export const RAIDERS = {
   worker: {
     name: 'Worker', species: 'worker', hotkey: '1',
     color: '#e8952f', dark: '#7a4a12', scale: 0.68, radius: 11,
-    cost: 60, count: 2, hp: 130, damage: 17, cooldown: 0.8, speed: 48, range: 26, siege: 5, eco: 0.95,
-    tagline: 'Two for nothing, and the best sugar-for-income in the game.',
+    cost: 60, count: 2, hp: 130, damage: 17, cooldown: 0.8, speed: 48, range: 26, siege: 5, eco: 0.72,
+    tagline: 'Two for nothing. Cheap bodies, quick income.',
   },
   army: {
     name: 'Army Ant', species: 'army', hotkey: '2',
@@ -29,34 +43,34 @@ export const RAIDERS = {
   trapjaw: {
     name: 'Trap-Jaw', species: 'trapjaw', hotkey: '3',
     color: '#b5442c', dark: '#5e1d0e', scale: 0.82, radius: 14,
-    cost: 200, count: 1, hp: 430, damage: 52, cooldown: 1.0, speed: 42, range: 32, siege: 11, eco: 1.4,
+    cost: 200, count: 1, hp: 430, damage: 52, cooldown: 1.0, speed: 42, range: 32, siege: 11, eco: 2.3,
     tagline: 'Walks through a lane fight and keeps walking.',
   },
   exploder: {
     name: 'Exploder', species: 'exploder', hotkey: '4',
     color: '#e2762a', dark: '#7a3608', scale: 0.72, radius: 13,
-    cost: 170, count: 1, hp: 170, damage: 0, cooldown: 0.4, speed: 60, range: 30, siege: 10, eco: 0.8,
+    cost: 170, count: 1, hp: 170, damage: 0, cooldown: 0.4, speed: 60, range: 30, siege: 10, eco: 1.9,
     blast: { r: 70, damage: 150 }, vsDefender: true,
     tagline: 'One hit, one crater. Clears clumps and cracks pads.',
   },
   weaver: {
     name: 'Weaver', species: 'weaver', hotkey: '5',
     color: '#2fa7a0', dark: '#0e4f4b', scale: 0.72, radius: 12,
-    cost: 190, count: 1, hp: 190, damage: 14, cooldown: 1.1, speed: 44, range: 112, siege: 3, eco: 1.0,
+    cost: 190, count: 1, hp: 190, damage: 14, cooldown: 1.1, speed: 44, range: 112, siege: 3, eco: 2.1,
     slow: { mul: 0.55, dur: 1.6 }, vsDefender: true,
     tagline: 'Silk from the back rank. Everything it touches crawls.',
   },
   archer: {
     name: 'Acid Archer', species: 'archer', hotkey: '6',
     color: '#8e5bc6', dark: '#43246b', scale: 0.72, radius: 12,
-    cost: 240, count: 1, hp: 150, damage: 46, cooldown: 1.25, speed: 38, range: 138, siege: 5, eco: 1.1,
+    cost: 240, count: 1, hp: 150, damage: 46, cooldown: 1.25, speed: 38, range: 138, siege: 5, eco: 2.6,
     vsDefender: true,
     tagline: 'Outranges the pads. The answer to a turtled lane.',
   },
   majoress: {
     name: 'Majoress', species: 'majoress', hotkey: '7',
     color: '#7b3fa0', dark: '#3c1657', scale: 1.05, radius: 18,
-    cost: 420, count: 1, hp: 900, damage: 84, cooldown: 1.4, speed: 30, range: 34, siege: 30, eco: 0.6,
+    cost: 420, count: 1, hp: 900, damage: 84, cooldown: 1.4, speed: 30, range: 34, siege: 30, eco: 4.4,
     armor: 6, vsDefender: true,
     tagline: 'Slow, enormous, and takes a chunk out of the nest.',
   },

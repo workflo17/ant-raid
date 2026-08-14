@@ -440,7 +440,7 @@ export class Sim {
     return { ok: true };
   }
 
-  /** Her ability. Free, but on a long cooldown, and locked until level 3. */
+  /** Her ability. Free, but on a long cooldown, and locked until she levels. */
   _ability(p) {
     const u = this.heroOf(p.index);
     if (!u) return { ok: false, why: 'your queen is not on the board' };
@@ -605,6 +605,21 @@ export class Sim {
     p.sugar -= PHEROMONE.cost;
     p.spent += PHEROMONE.cost;
     p.markCd = PHEROMONE.cooldown;
+    // ONE STRONG TRAIL PER COLONY. Marking a road pulls every other road this
+    // colony has marked down to the level traffic alone can hold, so scent is a
+    // declaration of where the colony is going rather than a coat of paint you
+    // keep every road wet with. Before this rule, marking was the second most
+    // performed action in the game (1771 casts against 2957 sends of the top
+    // unit in a 24-match audit) and it was ALWAYS correct: press it whenever
+    // the cooldown allowed, on whatever road you were using. A button that is
+    // never wrong to press is a chore wearing a mechanic's clothes. Now the
+    // press asks a question, which road is THE road, and switching answers
+    // costs the trail you had.
+    for (let l = 0; l < this.map.lanes.length; l++) {
+      if (l !== lane && this.pher[p.team][l] > PHEROMONE.reinforceCap) {
+        this.pher[p.team][l] = PHEROMONE.reinforceCap;
+      }
+    }
     this.pher[p.team][lane] = Math.min(1, this.pher[p.team][lane] + PHEROMONE.perMark);
     const at = this.map.laneAt(lane, this.map.laneLen[lane] * (dir > 0 ? 0.2 : 0.8), scratch);
     this.fx.push([FX.MARK, Math.round(at.x), Math.round(at.y), p.team]);

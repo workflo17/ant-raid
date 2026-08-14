@@ -158,11 +158,13 @@ export class AiBrain {
       if (u.team !== me.team) foes++;
       else if (u.hp < u.maxHp * 0.7) hurtFriends++;
     }
-    // Honeydew is a heal, so it wants wounded friends rather than live enemies.
+    // Honeydew is a heal, so it wants wounded friends or a wounded queen.
     // Levy is bodies out of nothing, so it only wants somewhere to put them.
-    const worth = ab.id === 'honeydew' ? hurtFriends >= 2
-      : ab.id === 'levy' ? foes >= 1
-      : foes >= 2;
+    // The damage abilities want A fight, not a crowd: waiting for two foes in
+    // range left a third of unlocked queens sitting on a free, off-cooldown
+    // ability for the whole match. One enemy in her face is reason enough.
+    const worth = ab.id === 'honeydew' ? (hurtFriends >= 1 || hero.hp < hero.maxHp * 0.75)
+      : foes >= 1;
     if (worth) this.cmd({ kind: 'ability' });
   }
 
@@ -253,6 +255,58 @@ export class AiBrain {
       || new Array(this.lanes).fill(0);
   }
 
+  /**
+   * The reactive pad, from the third build on: an answer to what is coming,
+   * not the next line of a list.
+   *
+   *   a real swarm, eight up   Mortar, whose blast is priced for exactly that
+   *   three or more ranged     Archer Nest, which outranges what outranges pads
+   *   three guns of mine       Beacon, whose aura then earns its slot
+   *   nothing in particular    Honeypot for the income, then silk
+   *
+   * The thresholds are deliberately high, and the Honeypot sits ABOVE the
+   * Beacon, because the first cut of this function had it the other way round:
+   * the bot's first two builds are both guns, so "beacon at two guns" made the
+   * aura the automatic third pad, the game's defence outgrew its income, and
+   * mean match length went from 4.5 minutes to 6.0 in one measurement. The
+   * reactive picks are answers to something the enemy is visibly doing, never
+   * the default.
+   */
+  _defPick(me, mine, have) {
+    // Reactive defence is for the colony being HURT. When level or ahead, the
+    // third pad is the Honeypot it always was, or the game's whole pace drifts:
+    // both bots answering ordinary traffic with extra guns added a minute and a
+    // half to the mean match in one measurement, because an answer to nothing
+    // in particular is just more defence. Behind on nest health, the tools
+    // unlock, which also makes them what they should be: comeback equipment.
+    let bestOther = 0;
+    for (let t = 0; t < this.sim.teamCount; t++) {
+      if (t !== me.team && this.sim.nestHp[t] > bestOther) bestOther = this.sim.nestHp[t];
+    }
+    const behind = this.sim.nestHp[me.team] + 25 < bestOther;
+    if (behind) {
+      let clump = 0, ranged = 0;
+      const perLane = {};
+      for (const u of this.sim.units) {
+        if (u.team === me.team || u.hp <= 0) continue;
+        if (!this.map.lanes[u.lane].ends.includes(me.team)) continue;
+        perLane[u.lane] = (perLane[u.lane] || 0) + 1;
+        if (clump < perLane[u.lane]) clump = perLane[u.lane];
+        const k = RAIDER_IDS[u.t];
+        if (k === 'archer' || k === 'weaver') ranged++;
+      }
+      const guns = mine.filter((d) => {
+        const def = DEFENDERS[Object.keys(DEFENDERS)[d.t]];
+        return def.damage || def.blast;
+      }).length;
+      if (!have.has('exploder') && clump >= 8) return 'exploder';
+      if (!have.has('archer') && ranged >= 3) return 'archer';
+      if (!have.has('beacon') && guns >= 3) return 'beacon';
+    }
+    if (!have.has('honeypot')) return 'honeypot';
+    return OPENING.find((k) => !have.has(k)) || 'worker';
+  }
+
   _defend(me) {
     // MINE, not my colony's, and capped by the roads that reach my nest.
     //
@@ -270,9 +324,17 @@ export class AiBrain {
     const mine = this.sim.defs.filter((d) => d.owner === me.index);
     if (mine.length >= this.maxDefs) return;
 
-    // pick what to build: follow the opening, but answer real pressure first
+    // The first two builds follow the opening: a cheap wall and teeth, the same
+    // start every match wants. From the third pad the pick is REACTIVE, chosen
+    // by what the enemy is actually doing. The old rule walked the OPENING list
+    // top to bottom, and since the budget is three or four pads, the list's
+    // tail was unreachable: the Mortar, the Beacon and the Archer Nest were
+    // built ZERO times across the audit that tuned this game. A defender the
+    // tuning bot cannot reach is a defender with no measured reason to exist.
     const have = new Set(mine.map((d) => Object.keys(DEFENDERS)[d.t]));
-    let want = OPENING.find((k) => !have.has(k)) || 'worker';
+    let want = mine.length < 2
+      ? (OPENING.find((k) => !have.has(k)) || 'worker')
+      : this._defPick(me, mine, have);
     if (this.level.tech < 0.5 && (want === 'beacon' || want === 'archer')) want = 'worker';
 
     const pressure = this._pressure(me.team);
@@ -355,11 +417,27 @@ export class AiBrain {
     // buy the most eco per sugar, and that compounds for the rest of the match.
     if (this.sim.t < this.level.ecoUntil && me.eco < this.level.ecoTarget) {
       const lane = this._weakestLane(me);
-      // cheapest eco per sugar first, but only out of what it packed
-      const ecoPicks = me.roster
-        .filter((k) => me.sugar >= RAIDERS[k].cost)
+      // Best eco per sugar first, but ANY of the top three, not strictly the
+      // winner. With the flattened eco table the ratios sit within a few
+      // percent of each other, and a strict sort re-created the exact
+      // degeneracy the flattening removed: the bot bought nothing but Workers
+      // through the whole eco phase because Workers win by 0.0003. A rational
+      // player at these ratios buys variety for the fight it brings.
+      const ranked = [...me.roster]
         .sort((a, b) => (RAIDERS[b].eco / RAIDERS[b].cost) - (RAIDERS[a].eco / RAIDERS[a].cost));
-      if (ecoPicks.length) this.cmd({ kind: 'send', unit: ecoPicks[0], lane });
+      const top = ranked.slice(0, Math.min(3, ranked.length));
+      const want = top[Math.floor(this.rand() * top.length) % top.length];
+      if (me.sugar >= RAIDERS[want].cost) {
+        this.cmd({ kind: 'send', unit: want, lane });
+      } else if (me.sugar <= RAIDERS[want].cost * 0.6) {
+        // nowhere near the pick: buy the best eco it CAN afford rather than
+        // stalling the opening. Close to it, hold, exactly as _sendNext does;
+        // without the hold, "any of the top three" collapsed back to Workers,
+        // because Workers were the only pick the purse could cover at the
+        // moment the think fired.
+        const afford = ranked.filter((k) => me.sugar >= RAIDERS[k].cost);
+        if (afford.length) this.cmd({ kind: 'send', unit: afford[0], lane });
+      }
       return;
     }
     // bank until a push is affordable, then commit the bank into one lane
@@ -368,9 +446,19 @@ export class AiBrain {
       return;
     }
     if (me.sugar < this.level.pushAt) {
-      // trickle chaff so the enemy is never entirely free to build
+      // trickle chaff so the enemy is never entirely free to build. Cheapest
+      // PACKED unit, by rule rather than by name: with eco per sugar nearly
+      // flat there is no reason the trickle must be Workers, and a hardcoded
+      // 'worker' here was one of the three legs of its 62 percent send share.
       if (me.sugar > this.level.pushAt * 0.55 && this.rand() < this.level.greed * 0.4) {
-        this.cmd({ kind: 'send', unit: 'worker', lane: this._weakestLane(me) });
+        // either of the two cheapest, so the trickle is not one species' job
+        const cheap = me.roster
+          .filter((k) => me.sugar >= RAIDERS[k].cost)
+          .sort((a, b) => RAIDERS[a].cost - RAIDERS[b].cost)
+          .slice(0, 2);
+        if (cheap.length) {
+          this.cmd({ kind: 'send', unit: cheap[Math.floor(this.rand() * cheap.length) % cheap.length], lane: this._weakestLane(me) });
+        }
       }
       return;
     }
@@ -471,8 +559,13 @@ export class AiBrain {
     }
 
     const wish = [];
-    // a wave wants something big in front to absorb the pads
-    if (roles.front < 1) wish.push(me.sugar > 780 && this.level.tech >= 0.55 ? 'majoress' : 'trapjaw');
+    // a wave wants something big in front to absorb the pads. The Majoress gate
+    // used to be a flat 780, which the normal bot banks past so rarely that she
+    // was sent ONCE in a 24-match audit; scaled to her price it fires whenever
+    // a real push can afford the big front instead of the cheap one.
+    if (roles.front < 1) {
+      wish.push(me.sugar > RAIDERS.majoress.cost + 180 && this.level.tech >= 0.55 ? 'majoress' : 'trapjaw');
+    }
     // a defended lane needs blast and range before it needs more bodies
     if (cov > 14 && this.level.tech > 0.4 && roles.gun < 1) wish.push('exploder');
     if (roles.gun < 2) wish.push('archer');

@@ -381,7 +381,32 @@ test('a queen levels on kills she helped land, and keeps it through death', () =
   assert.equal(sim.heroOf(0).lv, level, 'she came back smaller than she died');
 });
 
-test('her ability is locked until level 3, then costs a cooldown and nothing else', () => {
+test('one strong trail per colony: marking a new road costs the old one', () => {
+  const sim = duel();
+  const a = sim.playerById('A');
+  const b = sim.playerById('B');
+  a.sugar = 9999;
+  b.sugar = 9999;
+  // the other colony lays its own scent first, to prove the rule is per colony
+  sim.command('B', { kind: 'mark', lane: 0 });
+  const theirs = sim.pher[1][0];
+  assert.ok(theirs > 0);
+  // build lane 0 to full strength
+  for (let i = 0; i < 5 && sim.pher[0][0] < 1; i++) {
+    a.markCd = 0;
+    sim.command('A', { kind: 'mark', lane: 0 });
+  }
+  assert.ok(sim.pher[0][0] > PHEROMONE.reinforceCap, 'never built a strong trail');
+  // declaring a different road pulls the old one down to what traffic can hold
+  a.markCd = 0;
+  assert.equal(sim.command('A', { kind: 'mark', lane: 1 }).ok, true);
+  assert.ok(sim.pher[0][0] <= PHEROMONE.reinforceCap + 1e-9,
+    `the old trail kept its strength: ${sim.pher[0][0]}`);
+  assert.equal(sim.pher[0][1], PHEROMONE.perMark);
+  assert.equal(sim.pher[1][0], theirs, 'one colony marking decayed the OTHER colony\'s trail');
+});
+
+test('her ability is locked until the unlock level, then costs a cooldown and nothing else', () => {
   const sim = duel({ players: [{ id: 'A', name: 'A', team: 0, queen: 'melissa' }] });
   const a = sim.playerById('A');
   a.sugar = 9999;

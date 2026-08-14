@@ -4,9 +4,16 @@
 // first time she walks out and is free every time after that, but she is slow to
 // come back, so losing her is a tempo loss rather than a purchase you repeat.
 //
-// She levels on kills she helped land. Level 3 unlocks her ability, which is the
+// She levels on kills she helped land. Level 2 unlocks her ability, which is the
 // only thing that really separates the four of them: the stat blocks are close
 // on purpose, because a queen you cannot answer is a queen that decides matches.
+//
+// THE UNLOCK USED TO BE LEVEL 3, and at level 3 the ability was decoration: an
+// instrumented audit found 44 percent of queens ending the match at level 1,
+// 69 percent never reaching the unlock, and 28 casts across 32 matches. The
+// four abilities are the four characters of this game, and they were not
+// happening. Level 2 needs 12 assist xp, roughly two chaff waves she helped
+// stop, which the median queen earns in her first sortie.
 //
 // The four bodies were already drawn in js/render/ants.js as `hero` variants
 // (`opts.hero`), so `art` here names the variant rather than describing one.
@@ -18,11 +25,14 @@
 
 export const HERO = {
   cost: 300,             // first walk-out only; every respawn after that is free
-  abilityAt: 3,          // the level her ability unlocks at
+  abilityAt: 2,          // the level her ability unlocks at, see header note
   maxLevel: 5,
   abilityCd: 24,
-  // total xp needed to REACH each level; index 0 and 1 are the starting level
-  ladder: [0, 0, 12, 30, 56, 92],
+  // total xp needed to REACH each level; index 0 and 1 are the starting level.
+  // Level 2 is the ability unlock, and its rung is priced so the median queen
+  // clears it on her first sortie: eight chaff bodies assisted at 1 xp each.
+  // At 12 a fifth of fielded queens never unlocked at all.
+  ladder: [0, 0, 8, 30, 56, 92],
   respawn: 26,           // seconds she is gone for...
   respawnPerLevel: 5,    // ...plus this per level, so a big queen is missed longer
   hpPerLevel: 1.16,

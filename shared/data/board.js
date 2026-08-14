@@ -122,7 +122,15 @@ export const TUNING = {
   // income simply piles up unspent: mean bank 279 at 1.7, 1580 at 2.8, 2290 at
   // 3.0, and the win rate stops moving. If co-op ever has to be harder than
   // this, the bot needs to act more often, not to be paid more.
-  aiIncomeMul: { easy: 0.85, normal: 1.0, hard: 1.25, coop: 2.8 },
+  //
+  // RE-SWEPT AT 2.6 after the flat-eco patch. The richer eco table and the
+  // reactive defence picks helped the handicapped bot more than the pair, and
+  // 2.8 slid to 42% pooled over two seed families. The plateau moved: 2.2 is
+  // 84%, 2.4 to 2.6 sit in the fifties, 2.8 is 42%. 2.6 pools to 53%, and the
+  // family-to-family swing is ±10 points, so treat any single-family reading
+  // of this number as weather. Re-sweep with tools/coop.js --sweep after any
+  // economy or bot change, the same rule as nestHp.
+  aiIncomeMul: { easy: 0.85, normal: 1.0, hard: 1.25, coop: 2.6 },
 };
 
 /**
@@ -143,6 +151,14 @@ export const suddenDeathFor = (teams) => (teams > 2
  * its own, but ants walking the road top it up, so a road you are actually using
  * stays fast and a road you abandoned goes cold. That is the whole loop: a small
  * cheap thing to do between purchases that pays off only if you follow it up.
+ *
+ * ONE STRONG TRAIL PER COLONY, enforced in Sim._mark: marking a road pulls
+ * every other road you have marked down to reinforceCap, the level traffic can
+ * hold on its own. Real colonies commit to a trail, and so does this one. The
+ * design reason is in the audit that forced it: marking was the second most
+ * performed action in the game and always correct, which makes it a tax rather
+ * than a choice. Exclusive, it reads as "this is the road", and re-marking
+ * somewhere else is a visible change of plan that costs what you had built.
  *
  * Per team, per lane, which makes it fair by construction: there is no geometry
  * in it to mirror. It is capped so it can never become a second Rally, and the
