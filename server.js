@@ -50,7 +50,21 @@ const MAX_SLIDE = 20;
 // the port actually bound, which is BASE_PORT unless it had to move
 let PORT = BASE_PORT;
 const SNAP_EVERY = 3;          // broadcast at 10 Hz, simulate at 30 Hz
-const ABANDON_AFTER = 45_000;  // forfeit if a colony stays empty this long
+/**
+ * How long a colony nobody is holding stands there before it forfeits.
+ *
+ * Overridable ONLY so that the free-for-all check in tools/netcheck.js can watch
+ * a forfeit land while the abandoned colony still has a column on the board. At
+ * the real three quarters of a minute its ants have all died of neglect first,
+ * so "its ants left the board" passes on an already-empty board and proves
+ * nothing about Sim._scatter() — which is the one thing that check exists to
+ * prove. Nothing else should ever set this: a server that forfeits early is a
+ * server that ends somebody's match while they are still reconnecting.
+ *
+ * Junk or zero falls back to the real number rather than to NaN, which would
+ * compare false against every elapsed time and forfeit every empty seat at once.
+ */
+const ABANDON_AFTER = Number(process.env.AR_ABANDON_AFTER) || 45_000;
 const EMPTY_ROOM_TTL = 10 * 60_000;
 
 // ---------------------------------------------------------------- static files
