@@ -6,7 +6,12 @@
 // and they can be on different maps, so nothing here may be global and mutable.
 
 import { buildPath, posAt, clamp, dist } from './util.js';
+import { FOOD } from './data/board.js';
 import { MAPS, MAP_IDS, DEFAULT_MAP, WORLD_W, WORLD_H } from './data/maps.js';
+import { RING_BOARDS } from './data/ring.js';
+
+/** Duelling boards and ring boards live in one list; `kind` says which. */
+const ALL = [...MAPS, ...RING_BOARDS];
 
 const CENTER = WORLD_W / 2;
 const onCenter = (x) => Math.abs(x - CENTER) < 1;
@@ -23,9 +28,18 @@ function bothSides(list = []) {
 }
 
 export function buildMap(id = DEFAULT_MAP) {
-  const def = MAPS.find((m) => m.id === id) || MAPS.find((m) => m.id === DEFAULT_MAP);
+  const def = ALL.find((m) => m.id === id) || ALL.find((m) => m.id === DEFAULT_MAP);
+  const W = def.width ?? WORLD_W;
+  const H = def.height ?? WORLD_H;
+  const ring = def.kind === 'ring';
 
-  const lanes = def.lanes.map((l, i) => ({ ...l, id: i, path: buildPath(l.points) }));
+  // A LANE RUNS BETWEEN TWO COLONIES. On the mirrored boards every road joins
+  // the only two there are, so `ends` defaults to [0, 1] and nothing changes.
+  // A ring board sets it per lane, and that is what lets an ant know whose nest
+  // it just walked into without assuming there is exactly one other colony.
+  const lanes = def.lanes.map((l, i) => ({
+    ...l, id: i, ends: l.ends || [0, 1], path: buildPath(l.points),
+  }));
   const laneLen = lanes.map((l) => l.path.length);
 
   const mounds = bothSides(def.mounds);
@@ -44,11 +58,18 @@ export function buildMap(id = DEFAULT_MAP) {
     return Math.round(mul * 1000) / 1000;
   };
 
-  const mkPads = (team) => def.pads.map((p, i) => {
-    const x = team === 0 ? p.x : mirrorX(p.x);
-    return { i, lane: p.lane, x, y: p.y, team, rangeMul: padRangeMul(x, p.y) };
-  });
+  // A duelling board authors its pads once and mirrors them. A ring board has
+  // already placed every colony's pads by rotating colony 0's, so they are taken
+  // as they are and only re-indexed per colony.
+  const mkPads = (team) => (ring
+    ? def.pads.filter((p) => p.team === team)
+      .map((p, i) => ({ i, lane: p.lane, x: p.x, y: p.y, team, rangeMul: padRangeMul(p.x, p.y) }))
+    : def.pads.map((p, i) => {
+      const x = team === 0 ? p.x : mirrorX(p.x);
+      return { i, lane: p.lane, x, y: p.y, team, rangeMul: padRangeMul(x, p.y) };
+    }));
 
+  const teams = def.teams ?? 2;
   const nestX = def.nestX ?? 74;
   const map = {
     id: def.id,
@@ -57,12 +78,19 @@ export function buildMap(id = DEFAULT_MAP) {
     theme: def.theme,
     blurb: def.blurb,
     note: def.note,
-    width: WORLD_W,
-    height: WORLD_H,
+    kind: def.kind || 'mirror',
+    teams,
+    // The aphid herd sits dead centre, which is the one spot that needs no
+    // mirroring and no rotating. It used to be a fixed (480, 320) in the tuning
+    // file, which WAS the centre back when every board was 960x640; on a wider
+    // ring board that put it nearer some colonies than others.
+    food: { x: W / 2, y: H / 2, r: def.food?.r ?? FOOD.r },
+    width: W,
+    height: H,
     lanes,
     laneLen,
-    pads: [mkPads(0), mkPads(1)],
-    nests: [
+    pads: Array.from({ length: teams }, (_, t) => mkPads(t)),
+    nests: ring ? def.nests.map((n) => ({ ...n })) : [
       { team: 0, x: nestX, y: 320, r: 46 },
       { team: 1, x: mirrorX(nestX), y: 320, r: 46 },
     ],
@@ -70,6 +98,25 @@ export function buildMap(id = DEFAULT_MAP) {
     hazards,
     dark: def.dark ? { ...def.dark, pools: darkPools } : null,
     props: def.props || [],
+
+    /** Whose nest sits at the end of this lane an ant walking `dir` is heading for. */
+    laneFoe(lane, dir) {
+      const e = lanes[lane].ends;
+      return dir > 0 ? e[1] : e[0];
+    },
+
+    /** Which end of this lane a colony starts from, or -1 if the lane misses it. */
+    laneSideFor(lane, team) {
+      const e = lanes[lane].ends;
+      if (e[0] === team) return 1;    // walk forwards, toward e[1]
+      if (e[1] === team) return -1;   // walk backwards, toward e[0]
+      return 0;                       // this road does not touch your nest
+    },
+
+    /** Every lane that touches a colony's nest. */
+    lanesFor(team) {
+      return lanes.filter((l) => l.ends.includes(team)).map((l) => l.id);
+    },
 
     /** World position and heading at distance `d` along a lane. */
     laneAt(lane, d, out = { x: 0, y: 0, angle: 0, seg: 0 }, hint = 0) {
@@ -87,11 +134,19 @@ export function buildMap(id = DEFAULT_MAP) {
   return map;
 }
 
-/** Menu data: enough to draw a map card without building the whole thing. */
-export function mapList() {
-  return MAPS.map((m) => ({
-    id: m.id, name: m.name, tag: m.tag, blurb: m.blurb, note: m.note, theme: m.theme,
+/**
+ * Menu data: enough to draw a map card without building the whole thing.
+ * Defaults to the duelling boards; ask for a colony count to get ring boards.
+ */
+export function mapList(teams = 2) {
+  return ALL.filter((m) => (m.teams ?? 2) === teams).map((m) => ({
+    id: m.id, name: m.name, tag: m.tag, blurb: m.blurb, note: m.note,
+    theme: m.theme, teams: m.teams ?? 2,
   }));
 }
+
+/** The board this many colonies play on. */
+export const boardForTeams = (n) => (n === 2 ? DEFAULT_MAP : `ring${n}`);
+export const ALL_MAP_IDS = ALL.map((m) => m.id);
 
 export { MAP_IDS, DEFAULT_MAP, WORLD_W, WORLD_H };

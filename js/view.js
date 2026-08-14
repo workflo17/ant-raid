@@ -70,7 +70,12 @@ export function buildView(map, cur, prev, a = 1) {
     t: cur.t,
     nestHp: cur.hp,
     units, defs, walls, wild,
-    food: { hold: cur.fd ? cur.fd[0] : 0, owner: cur.fd ? cur.fd[1] : -1, x: FOOD.x, y: FOOD.y, r: FOOD.r },
+    food: {
+      hold: cur.fd ? cur.fd[0] : 0,
+      owner: cur.fd ? cur.fd[1] : -1,
+      lead: cur.fd && cur.fd.length > 2 ? cur.fd[2] : -1,
+      ...map.food,
+    },
     rallies: cur.r,
     rains: cur.a,
     pher: cur.ph || [[0, 0, 0], [0, 0, 0]],
@@ -83,8 +88,11 @@ export function buildView(map, cur, prev, a = 1) {
 }
 
 /** How much force each side has standing in each lane — feeds the lane rail. */
-export function lanePressure(view, lanes = 3) {
-  const out = [new Array(lanes).fill(0), new Array(lanes).fill(0)];
-  for (const u of view.units) out[u.team][u.lane] += u.hp;
+export function lanePressure(view, lanes = 3, teams = 2) {
+  const out = Array.from({ length: teams }, () => new Array(lanes).fill(0));
+  for (const u of view.units) {
+    if (!out[u.team]) continue;
+    out[u.team][u.lane] += u.hp;
+  }
   return out;
 }

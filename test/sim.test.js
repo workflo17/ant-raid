@@ -10,6 +10,7 @@ import {
 } from '../shared/data/board.js';
 import { EMOTES, isEmote } from '../shared/data/emotes.js';
 import { MAPS, DEFAULT_MAP } from '../shared/data/maps.js';
+import { RING_SIZES } from '../shared/data/ring.js';
 import { RAIDERS, DEFENDERS, POWERS, RAIDER_IDS, LOADOUT_SIZE, cleanLoadout, DEFAULT_LOADOUT } from '../shared/data/units.js';
 import { QUEENS, QUEEN_IDS, HERO, cleanQueen, queenStats, DEFAULT_QUEEN } from '../shared/data/heroes.js';
 
@@ -598,6 +599,142 @@ test('an emote is an index into a fixed list and nothing else', () => {
   for (const evil of [-1, EMOTES.length, 1.5, '0', '__proto__', null, undefined, NaN, Infinity, {}, []]) {
     assert.equal(isEmote(evil), false, `${String(evil)} passed as an emote`);
   }
+});
+
+// ----------------------------------------------------------- ring boards
+
+/**
+ * Colony i's four roads in a canonical order: two toward the colony after it,
+ * two toward the colony before. "My second road" then means the same thing to
+ * everybody, which is what lets a script be played identically by all of them.
+ */
+const roadsOf = (n, i) => [2 * i, 2 * i + 1, 2 * (((i - 1) + n) % n), 2 * (((i - 1) + n) % n) + 1];
+
+for (const n of RING_SIZES) {
+  const id = `ring${n}`;
+
+  test(`${id}: every colony is handed the same board`, () => {
+    const map = buildMap(id);
+    assert.equal(map.nests.length, n);
+    assert.equal(map.teams, n);
+    assert.equal(map.kind, 'ring');
+
+    // rotational symmetry, checked on the things that decide a match
+    const spread = (xs) => Math.max(...xs) - Math.min(...xs);
+    assert.ok(spread(map.laneLen) < 1e-6, `roads differ in length by ${spread(map.laneLen)}`);
+    const fromMiddle = map.nests.map((v) => Math.hypot(v.x - map.width / 2, v.y - map.height / 2));
+    assert.ok(spread(fromMiddle) < 1e-6, 'a nest sits closer to the middle than the others');
+
+    // each colony's pads sit the same way round its own nest, and see as far
+    const sig = map.pads.map((ps, t) => ps
+      .map((p) => Math.hypot(p.x - map.nests[t].x, p.y - map.nests[t].y).toFixed(6)).sort().join(','));
+    assert.equal(new Set(sig).size, 1, 'one colony has its pads placed differently');
+    const reach = map.pads.map((ps) => ps.map((p) => p.rangeMul).sort().join(','));
+    assert.equal(new Set(reach).size, 1, 'one colony can see further than another');
+
+    // every road joins neighbours only, and both of them can walk it
+    for (const l of map.lanes) {
+      assert.equal(l.ends.length, 2);
+      const [a, b] = l.ends;
+      assert.equal((a + 1) % n, b, `a road joins ${a} to ${b}, which are not neighbours`);
+      assert.equal(map.laneSideFor(l.id, a), 1);
+      assert.equal(map.laneSideFor(l.id, b), -1);
+      assert.equal(map.laneFoe(l.id, 1), b);
+      assert.equal(map.laneFoe(l.id, -1), a);
+    }
+    // and every colony has the same number of ways out
+    const ways = Array.from({ length: n }, (_, t) => map.lanesFor(t).length);
+    assert.equal(new Set(ways).size, 1);
+
+    // the herd has to be somewhere the roads actually go
+    let closest = Infinity;
+    for (let l = 0; l < map.lanes.length; l++) {
+      for (let d = 0; d <= map.laneLen[l]; d += 7) {
+        const pt = map.laneAt(l, d, { x: 0, y: 0, angle: 0, seg: 0 });
+        closest = Math.min(closest, Math.hypot(pt.x - map.food.x, pt.y - map.food.y));
+      }
+    }
+    assert.ok(closest < map.food.r, `no road comes within ${closest.toFixed(0)} of a herd of ${map.food.r}`);
+  });
+
+  test(`${id}: the same play from every colony ends every nest level`, () => {
+    // The ring equivalent of the mirrored boards' "same script from both sides".
+    // If any colony's board differs by so much as a pad, this drifts apart.
+    const sim = new Sim({
+      mode: 'versus', map: id, seed: 4242, wildlife: false,
+      players: Array.from({ length: n }, (_, i) => ({ id: `P${i}`, name: `P${i}`, team: i })),
+    });
+    for (const p of sim.players) p.roster = [...RAIDER_IDS];
+    const order = ['worker', 'army', 'trapjaw', 'archer'];
+    let acc = 0, k = 0, queened = false;
+    while (!sim.over && sim.t < 220) {
+      sim.step(DT);
+      acc += DT;
+      if (!queened && sim.t >= 20) {
+        queened = true;
+        for (const p of sim.players) p.sugar += 400;
+        for (let i = 0; i < n; i++) sim.command(`P${i}`, { kind: 'queen', lane: roadsOf(n, i)[0] });
+      }
+      if (acc >= 3) {
+        acc = 0;
+        const unit = order[k % order.length], slot = k % 4;
+        k++;
+        for (let i = 0; i < n; i++) {
+          const lane = roadsOf(n, i)[slot];
+          sim.command(`P${i}`, { kind: 'send', unit, lane });
+          sim.command(`P${i}`, { kind: 'mark', lane });
+        }
+      }
+      sim.fx.length = 0;
+    }
+    const hp = sim.nestHp.map((h) => h.toFixed(4));
+    assert.equal(new Set(hp).size, 1, `nests ended ${hp.join(' / ')}`);
+    const alive = sim.players.map((p) => sim.units.filter((u) => u.owner === p.index).length);
+    assert.equal(new Set(alive).size, 1, `survivors ${alive.join('/')}`);
+    assert.equal(new Set(sim.players.map((p) => p.heroXp)).size, 1, 'queens earned differently');
+    assert.equal(new Set(sim.players.map((p) => Math.round(p.sugar * 1e4))).size, 1, 'purses drifted apart');
+  });
+}
+
+test('a road you are not on cannot be raided down', () => {
+  const n = 4;
+  const sim = new Sim({
+    mode: 'versus', map: 'ring4', seed: 5, wildlife: false,
+    players: Array.from({ length: n }, (_, i) => ({ id: `P${i}`, name: `P${i}`, team: i })),
+  });
+  for (const p of sim.players) { p.roster = [...RAIDER_IDS]; p.sugar = 9999; }
+  const mine = sim.map.lanesFor(0);
+  assert.equal(mine.length, 4);
+  assert.equal(sim.command('P0', { kind: 'send', unit: 'worker', lane: mine[0] }).ok, true);
+  const notMine = sim.map.lanes.find((l) => !l.ends.includes(0)).id;
+  assert.match(sim.command('P0', { kind: 'send', unit: 'worker', lane: notMine }).why, /does not run from your nest/);
+  assert.match(sim.command('P0', { kind: 'queen', lane: notMine }).why, /does not run from your nest/);
+});
+
+test('a free-for-all outlives a colony falling, and the last one takes it', () => {
+  const n = 4;
+  const sim = new Sim({
+    mode: 'versus', map: 'ring4', seed: 5, wildlife: false,
+    players: Array.from({ length: n }, (_, i) => ({ id: `P${i}`, name: `P${i}`, team: i })),
+  });
+  sim.nestHp[1] = 0;
+  sim.step(DT);
+  assert.equal(sim.over, false, 'one colony falling ended everybody else\'s match');
+  assert.equal(sim.out[1], true);
+  sim.nestHp[2] = 0;
+  sim.nestHp[3] = 0;
+  sim.step(DT);
+  assert.equal(sim.over, true);
+  assert.equal(sim.winner, 0);
+  assert.match(sim.endReason, /last colony standing/);
+});
+
+test('six colonies get six different colours', () => {
+  const ids = resolveColors(new Array(6).fill('ember'));
+  assert.equal(ids.length, 6);
+  assert.equal(new Set(ids).size, 6, 'two colonies would be wearing the same colour');
+  for (const id of ids) assert.ok(isColor(id));
+  assert.ok(COLONY_COLORS.length >= 6, 'not enough colours for the biggest game');
 });
 
 // ------------------------------------------------------------- two a side

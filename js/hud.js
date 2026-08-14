@@ -12,6 +12,8 @@ import { QUEENS, HERO, cleanQueen } from '../shared/data/heroes.js';
 import { lanePressure } from './view.js';
 
 const PRESSURE_FULL = 1400; // hp in one lane that fills a pressure meter
+// keys for a colony's own roads, in rail order
+const LANE_KEYS = ['A', 'S', 'D', 'F', 'G', 'H'];
 
 function iconCanvas(def, team, size = 44, hero = null) {
   const cv = document.createElement('canvas');
@@ -42,8 +44,14 @@ export class Hud {
     Object.assign(this, o);
     this.roster = (o.roster && o.roster.length) ? o.roster : DEFAULT_LOADOUT;
     this.queen = cleanQueen(o.queen);
-    this.lanes = this.map.lanes;
-    this.lane = (this.lanes.length / 2) | 0;
+    // ONLY THE ROADS THAT RUN FROM YOUR NEST. On a duelling board that is all
+    // three of them; on a ring board it is your four out of ten, and showing the
+    // rest would offer you roads the server will refuse to send anything down.
+    const mine = this.map.lanesFor ? this.map.lanesFor(this.team) : null;
+    this.lanes = mine && mine.length
+      ? mine.map((id, k) => ({ ...this.map.lanes[id], id, key: LANE_KEYS[k] || '' }))
+      : this.map.lanes;
+    this.lane = this.lanes[(this.lanes.length / 2) | 0]?.id ?? 0;
     this.sugar = 0;
     this.cards = new Map();
     this.upEls = new Map();
@@ -246,10 +254,12 @@ export class Hud {
   }
 
   aim(lane) {
+    // `lane` is a real lane id, which on a ring board is not its rail position
     this.lane = lane;
     this.chips.forEach((b, i) => {
-      b.classList.toggle('on', i === lane);
-      b.setAttribute('aria-pressed', String(i === lane));
+      const on = this.lanes[i].id === lane;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
     });
   }
 
@@ -272,8 +282,8 @@ export class Hud {
   handleKey(e) {
     if (!this.keys) return false;
     const k = e.key.toLowerCase();
-    const laneKey = this.lanes.findIndex((L) => L.key.toLowerCase() === k);
-    if (laneKey >= 0) { this.aim(laneKey); return true; }
+    const laneKey = this.lanes.findIndex((L) => (L.key || '').toLowerCase() === k);
+    if (laneKey >= 0) { this.aim(this.lanes[laneKey].id); return true; }
     const power = POWER_IDS.find((p) => POWERS[p].hotkey.toLowerCase() === k);
     if (power) { this.cast(power); return true; }
     // the queen sits beside the powers rather than in them: she is one ant, not
@@ -357,14 +367,18 @@ export class Hud {
       this.markEl.setAttribute('aria-disabled', String(p.s < PHEROMONE.cost || cd > 0 || full));
     }
 
-    const press = lanePressure(view, this.lanes.length);
+    const press = lanePressure(view, this.map.lanes.length, view.players?.length || 2);
     const scent = view.pher?.[this.team] || [];
-    for (let l = 0; l < this.lanes.length; l++) {
-      const bar = this.chips[l].querySelector('.lane-press');
-      bar.querySelector('i').style.width = `${Math.min(50, (press[0][l] / PRESSURE_FULL) * 100)}%`;
-      bar.querySelector('b').style.width = `${Math.min(50, (press[1][l] / PRESSURE_FULL) * 100)}%`;
-      // your own trail on that road, so you can see which ones have gone cold
-      this.chips[l].querySelector('.lane-scent i').style.width = `${(scent[l] || 0) * 100}%`;
+    for (let i = 0; i < this.lanes.length; i++) {
+      const id = this.lanes[i].id;
+      const bar = this.chips[i].querySelector('.lane-press');
+      // yours from the left, everybody else's from the right
+      const mineHp = press[this.team]?.[id] || 0;
+      let theirs = 0;
+      for (let t = 0; t < press.length; t++) if (t !== this.team) theirs += press[t][id] || 0;
+      bar.querySelector('i').style.width = `${Math.min(50, (mineHp / PRESSURE_FULL) * 100)}%`;
+      bar.querySelector('b').style.width = `${Math.min(50, (theirs / PRESSURE_FULL) * 100)}%`;
+      this.chips[i].querySelector('.lane-scent i').style.width = `${(scent[id] || 0) * 100}%`;
     }
   }
 }

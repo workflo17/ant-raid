@@ -33,9 +33,11 @@ export function colorEpoch() { return epoch; }
  * same answer rather than showing two colonies in one colour.
  */
 export function setColonyColors(ids) {
-  const [a, b] = resolveColors(ids);
-  const next = [colorById(a), colorById(b)];
-  if (next[0] === active[0] && next[1] === active[1]) return active;
+  // as many colonies as the match has, not two: a ring board has up to six, and
+  // holding only a pair left every colony past the second falling back to the
+  // first one's colour, so four nests came out the same red
+  const next = resolveColors(ids).map(colorById);
+  if (next.length === active.length && next.every((c, i) => c === active[i])) return active;
   active = next;
   epoch++;
   applyCssVars();
@@ -46,14 +48,21 @@ export function setColonyColors(ids) {
  * The HUD is CSS, not canvas, and it reads --ember and --frost. Those names are
  * now roles rather than colours: --ember is whatever team 0 is wearing.
  */
-export function applyCssVars() {
+export function applyCssVars(mine = 0) {
   const root = document.documentElement;
   if (!root) return;
-  root.style.setProperty('--ember', active[0].accent);
-  root.style.setProperty('--ember-dark', shade(active[0].accent, 0.34));
-  root.style.setProperty('--frost', active[1].accent);
-  root.style.setProperty('--frost-dark', shade(active[1].accent, 0.34));
+  // The HUD only ever shows one colony's readouts, so --ember is whichever
+  // colony YOU are, and --frost is somebody else for the pressure bars.
+  const you = active[mine] || active[0];
+  const them = active[mine === 0 ? 1 : 0] || active[1] || active[0];
+  root.style.setProperty('--ember', you.accent);
+  root.style.setProperty('--ember-dark', shade(you.accent, 0.34));
+  root.style.setProperty('--frost', them.accent);
+  root.style.setProperty('--frost-dark', shade(them.accent, 0.34));
 }
+
+/** How many colonies this match is being played in. */
+export const colonyCount = () => active.length;
 
 /** Darken a hex by mixing it toward black, for the -dark pair of each role. */
 function shade(hex, amount) {

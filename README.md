@@ -28,6 +28,26 @@ npm start
 
 Then open <http://localhost:5010>.
 
+### Three to six of you: every colony for itself
+
+Host a room, pick **Every colony for itself**, send the link to everyone. Start
+whenever three or more are in. The board is chosen by how many turned up: three
+people play a triangle, six play a wheel.
+
+Colonies sit in a ring and roads only ever join NEIGHBOURS, so you have exactly
+two people who can hurt you and two you can hurt. You cannot touch the colony
+opposite. That is the whole shape of the mode, because hitting one neighbour
+softens them up for the colony on their far side as much as for you.
+
+Your rail shows your four roads and nobody else's: two at each neighbour, named
+for whoever is at the far end. A nest falling does not end the match, it just
+takes that colony out, and the last one standing wins.
+
+Those boards are wider (1280x860) and are generated rather than drawn. One
+colony's wedge is authored and rotated, the same way the duelling boards author
+one half and mirror it, so a six-colony board is exactly as fair as a
+three-colony one and neither can drift.
+
 ### Four of you: two a side
 
 Host a room, pick **Two a side** in the lobby, and send the link to all three of

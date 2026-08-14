@@ -538,6 +538,10 @@ function renderShare(code) {
 function renderLobby(m) {
   show('lobby');
   const d = driver;
+  // read up front: the copy at the top of the lobby depends on the shape of the
+  // room as much as the seat list further down does
+  const capacity = m?.capacity || 2;
+  const ffa = !!m?.ffa;
   const code = m?.code || d.code || '····';
   $('#room-code').textContent = code;
   $('#sharebox').classList.toggle('hidden', !d.code);
@@ -547,7 +551,9 @@ function renderLobby(m) {
   $('#lobby-hint').textContent = isHost
     ? (m?.mode === 'pairs'
       ? 'Send that link to all three of them. The first two in share a colony with you.'
-      : 'Send that link to your friend. The raid starts when you say so.')
+      : ffa
+        ? 'Send the link to everyone. Three or more, and you can start whenever you like.'
+        : 'Send that link to your friend. The raid starts when you say so.')
     : 'Waiting for the host to start.';
 
   const seats = $('#seats');
@@ -555,14 +561,15 @@ function renderLobby(m) {
   const players = m?.players || [];
   // How many chairs to draw. The server owns this, so a mode it has not told us
   // about yet still renders the two everybody has.
-  const capacity = m?.capacity || 2;
   const teamOf = (i) => players[i]?.team ?? (m?.mode === 'pairs' ? (i < 2 ? 0 : 1) : m?.mode === 'coop' ? 0 : i);
   for (let i = 0; i < capacity; i++) {
     const p = players[i];
     const li = document.createElement('li');
     li.className = `seat ${p ? `t${p.team}` : 'empty'} t${teamOf(i)}side`;
     // in pairs the two colonies need a visible seam, or four names read as a list
-    if (capacity > 2 && i > 0 && teamOf(i) !== teamOf(i - 1)) li.classList.add('seam');
+    // pairs has two colonies with a seam between them; a free-for-all is all
+    // seams, so it gets none
+    if (!ffa && capacity > 2 && i > 0 && teamOf(i) !== teamOf(i - 1)) li.classList.add('seam');
     if (p?.color) li.style.setProperty('--seat-color', COLONY_COLORS.find((c) => c.id === p.color)?.accent || '');
     const packed = (p?.roster || []).map((id) =>
       `<i style="background:${RAIDERS[id].color}" title="${RAIDERS[id].name}"></i>`).join('');
@@ -581,6 +588,7 @@ function renderLobby(m) {
     document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m.mode));
     if (m.map) chosenMap = m.map;
   }
+  $('#lobby-map-block').classList.toggle('hidden', ffa);
   buildMapStrip($('#lobby-map-strip'), {
     locked: !isHost,
     onPick: (id) => { pickMap(id, [$('#map-strip'), $('#lobby-map-strip')]); driver.setMap(id); },
@@ -589,11 +597,11 @@ function renderLobby(m) {
   buildQueenStrip($('#lobby-queen-strip'), {});
   const btn = $('#lobby-start');
   btn.disabled = !isHost || !m?.canStart;
-  const waitingFor = Math.max(0, capacity - players.length);
+  const need = Math.max(0, (m?.minSeats ?? capacity) - players.length);
   btn.textContent = !isHost ? 'The host starts this one'
-    : m?.canStart ? 'Start the raid'
-    : waitingFor === 1 ? 'Waiting for one more'
-    : `Waiting for ${waitingFor} more`;
+    : m?.canStart ? (ffa ? `Start the raid, ${players.length} colonies` : 'Start the raid')
+    : need === 1 ? 'Waiting for one more'
+    : `Waiting for ${need} more`;
 }
 
 document.querySelectorAll('[data-mode]').forEach((b) => {

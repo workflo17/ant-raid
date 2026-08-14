@@ -27,7 +27,7 @@ export const isHeroT = (t) => t < 0;
 // fx kinds are ints on the wire; the client maps them to particles + sound
 export const FX = {
   HIT: 0, POP: 1, BLAST: 2, SHOOT: 3, NEST: 4, CAST: 5, BUILD: 6, WALL: 7,
-  BOUNTY: 8, CLAIM: 9, LEVEL: 10, ABILITY: 11, QUEEN: 12, MARK: 13,
+  BOUNTY: 8, CLAIM: 9, LEVEL: 10, ABILITY: 11, QUEEN: 12, MARK: 13, FALL: 14,
 };
 
 export class Sim {
@@ -60,13 +60,21 @@ export class Sim {
     this.wild = [];
     this.fx = [];
 
-    this.nestHp = [TUNING.nestHp, TUNING.nestHp];
+    // HOW MANY COLONIES. The board decides, not the player list: a board with
+    // three nests is a three-colony game whether or not three people turned up.
+    // Everything that used to be a pair is sized from this.
+    this.teamCount = this.map.nests.length;
+    const perTeam = (fill) => Array.from({ length: this.teamCount },
+      () => new Array(this.map.lanes.length).fill(fill));
+
+    this.nestHp = new Array(this.teamCount).fill(TUNING.nestHp);
+    this.out = new Array(this.teamCount).fill(false);   // colonies already gone
     // rallies[team][lane] and rains[team][lane] hold an expiry time
-    this.rallies = [[0, 0, 0], [0, 0, 0]];
-    this.rains = [[0, 0, 0], [0, 0, 0]];
+    this.rallies = perTeam(0);
+    this.rains = perTeam(0);
     // pher[team][lane] is trail strength, 0 to 1. Unlike the two above it is a
     // level rather than a deadline: it is topped up and it drains.
-    this.pher = [[0, 0, 0], [0, 0, 0]];
+    this.pher = perTeam(0);
 
     this.players = (opts.players || []).map((p, i) => this._makePlayer(p, i));
     this.ai = opts.ai ? { ...opts.ai, team: opts.ai.team ?? 1 } : null;
@@ -81,13 +89,17 @@ export class Sim {
     this._assignPads();
     // one colour per COLONY, not per player: in co-op two humans share a side
     // and cannot wear different colours as each other
-    this.colors = resolveColors([
-      this.players.find((p) => p.team === 0)?.color,
-      this.players.find((p) => p.team === 1)?.color,
-    ]);
+    this.colors = resolveColors(
+      Array.from({ length: this.teamCount },
+        (_, t) => this.players.find((p) => p.team === t)?.color),
+    );
 
     this.nextWild = this.wildlifeOn ? WILDLIFE.firstAt : Infinity;
-    // the aphid herd: -1 held by team 1, +1 held by team 0, 0 contested
+    // The aphid herd. `foodLead` is whichever colony is currently pulling it and
+    // `foodHold` is how far, 0 to 1. With two colonies this is exactly the old
+    // signed tug written another way: hold -0.5 for team 0 IS hold +0.5 for
+    // team 1, so the dynamics are unchanged and it now says three names.
+    this.foodLead = -1;
     this.foodHold = 0;
     this.foodOwner = -1;
   }
@@ -133,7 +145,7 @@ export class Sim {
   // split their side evenly by alternating pads, so each gets one per lane and
   // neither can hog the wall.
   _assignPads() {
-    for (const team of [0, 1]) {
+    for (let team = 0; team < this.map.pads.length; team++) {
       const mine = this.players.filter((p) => p.team === team);
       const all = this.map.pads[team].map((_, i) => i);
       if (mine.length === 1) mine[0].padIdx = all;
@@ -195,21 +207,41 @@ export class Sim {
    * flip it and holding it actually means holding it.
    */
   _stepFood(dt) {
-    const near = [0, 0];
+    const F = this.map.food;
+    const near = new Array(this.teamCount).fill(0);
     for (const u of this.units) {
       if (u.hp <= 0) continue;
-      if (dist(u.x, u.y, FOOD.x, FOOD.y) <= FOOD.r) near[u.team]++;
+      if (dist(u.x, u.y, F.x, F.y) <= F.r) near[u.team]++;
     }
-    const diff = near[0] - near[1];
-    if (diff !== 0) {
-      const want = Math.sign(diff);
-      const speed = FOOD.tip * Math.min(1, Math.abs(diff) / 3);
-      this.foodHold = clamp(this.foodHold + want * speed * dt, -1, 1);
+    // who is winning it, and by how much over the next colony along
+    let lead = -1, best = 0, second = 0;
+    for (let t = 0; t < this.teamCount; t++) {
+      if (near[t] > best) { second = best; best = near[t]; lead = t; }
+      else if (near[t] > second) { second = near[t]; }
     }
-    const owner = this.foodHold >= FOOD.claimAt ? 0 : this.foodHold <= -FOOD.claimAt ? 1 : -1;
+    const margin = best - second;
+
+    if (margin > 0) {
+      const speed = FOOD.tip * Math.min(1, margin / 3);
+      if (lead === this.foodLead || this.foodHold <= 0) {
+        // pulling it further your way, or taking it over now it has gone slack
+        this.foodLead = lead;
+        this.foodHold = clamp(this.foodHold + speed * dt, 0, 1);
+      } else {
+        // Somebody else holds it: drag it back through slack and out the other
+        // side, CARRYING THE OVERSHOOT. Stopping dead at zero looks equivalent
+        // and is not: it throws away part of a tick's pull every time the herd
+        // changes hands, which moved every downstream number in the two-colony
+        // game when this was first written.
+        const next = this.foodHold - speed * dt;
+        if (next >= 0) this.foodHold = next;
+        else { this.foodLead = lead; this.foodHold = Math.min(1, -next); }
+      }
+    }
+    const owner = this.foodHold >= FOOD.claimAt ? this.foodLead : -1;
     if (owner !== this.foodOwner) {
       this.foodOwner = owner;
-      this.fx.push([FX.CLAIM, FOOD.x, FOOD.y, owner]);
+      this.fx.push([FX.CLAIM, Math.round(F.x), Math.round(F.y), owner]);
     }
   }
 
@@ -260,6 +292,9 @@ export class Sim {
     const lane = cmd.lane | 0;
     if (!p.roster.includes(cmd.unit)) return { ok: false, why: `you did not pack ${def.name}` };
     if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
+    // on a ring board most roads do not start at your door
+    const dir = this.map.laneSideFor(lane, p.team);
+    if (!dir) return { ok: false, why: 'that road does not run from your nest' };
     if (p.sugar < def.cost) return { ok: false, why: 'not enough sugar' };
     let alive = 0;
     for (const u of this.units) if (u.owner === p.index) alive++;
@@ -268,12 +303,11 @@ export class Sim {
     p.spent += def.cost;
     p.sent += def.count || 1;
     p.eco += this.ecoGain(p, def.eco || 0);   // the raid pays for itself
-    const dir = p.team === 0 ? 1 : -1;
-    const start = p.team === 0 ? 0 : this.map.laneLen[lane];
+    const start = dir > 0 ? 0 : this.map.laneLen[lane];
     for (let i = 0; i < (def.count || 1); i++) {
       this._addUnit(p, {
         t: RAIDER_IDS.indexOf(cmd.unit),
-        lane,
+        lane, dir,
         d: start - dir * i * TUNING.columnGap,
         hp: def.hp,
         caste: p.castes[cmd.unit] || 0,
@@ -291,7 +325,7 @@ export class Sim {
    * the step, which is the sort of bug that only shows up in a live match.
    */
   _addUnit(p, o) {
-    const dir = p.team === 0 ? 1 : -1;
+    const dir = o.dir ?? this.map.laneSideFor(o.lane, p.team) ?? 1;
     /**
      * The sideways fan, and it has to MIRROR.
      *
@@ -359,8 +393,11 @@ export class Sim {
       const gate = live.dir > 0 ? L * HERO.recallBefore : L * (1 - HERO.recallBefore);
       const stillBack = live.dir > 0 ? live.d < gate : live.d > gate;
       if (!stillBack) return { ok: false, why: 'she is too deep to call back' };
+      const moveDir = this.map.laneSideFor(lane, p.team);
+      if (!moveDir) return { ok: false, why: 'that road does not run from your nest' };
       live.lane = lane;
-      live.d = p.team === 0 ? 0 : this.map.laneLen[lane];
+      live.dir = moveDir;
+      live.d = moveDir > 0 ? 0 : this.map.laneLen[lane];
       live.seg = 0;
       p.heroMoveCd = HERO.recallCd;
       const home = this.map.nests[p.team];
@@ -377,9 +414,11 @@ export class Sim {
     p.heroBought = true;
 
     const s = queenStats(p.queen, p.heroLevel);
-    const start = p.team === 0 ? 0 : this.map.laneLen[lane];
+    const dir = this.map.laneSideFor(lane, p.team);
+    if (!dir) return { ok: false, why: 'that road does not run from your nest' };
+    const start = dir > 0 ? 0 : this.map.laneLen[lane];
     this._addUnit(p, {
-      kind: 'h', t: heroT(p.queen), lane, d: start, hp: s.hp, lv: p.heroLevel, off: 0,
+      kind: 'h', t: heroT(p.queen), lane, dir, d: start, hp: s.hp, lv: p.heroLevel, off: 0,
     });
     const n = this.map.nests[p.team];
     this.fx.push([FX.QUEEN, n.x, n.y, p.team]);
@@ -546,9 +585,10 @@ export class Sim {
    * traffic can maintain a trail but never build one from nothing.
    */
   _stepPheromone(dt) {
-    const walking = [[0, 0, 0], [0, 0, 0]];
+    const walking = Array.from({ length: this.teamCount },
+      () => new Array(this.map.lanes.length).fill(0));
     for (const u of this.units) if (u.hp > 0) walking[u.team][u.lane]++;
-    for (const team of [0, 1]) {
+    for (let team = 0; team < this.teamCount; team++) {
       for (let l = 0; l < this.map.lanes.length; l++) {
         let v = this.pher[team][l];
         if (v <= 0 && walking[team][l] === 0) continue;
@@ -589,8 +629,7 @@ export class Sim {
 
     if (this.t >= TUNING.suddenDeathAt) {
       const bleed = TUNING.suddenDeathDps * dt;
-      this.nestHp[0] -= bleed;
-      this.nestHp[1] -= bleed;
+      for (let t = 0; t < this.teamCount; t++) this.nestHp[t] = Math.max(0, this.nestHp[t] - bleed);
     }
     this._checkEnd();
   }
@@ -658,15 +697,24 @@ export class Sim {
     // 54 of one colony's 55 queued behind its own queen and nothing able to
     // reach a nest again. She is one body, and the sideways `off` fan already
     // keeps her from sitting on top of anyone.
-    const columns = [[[], [], []], [[], [], []]];
+    const columns = Array.from({ length: this.teamCount },
+      () => Array.from({ length: this.map.lanes.length }, () => []));
     for (const u of this.units) {
       if (u.kind === 'h') { u.colAhead = null; continue; }
       columns[u.team][u.lane].push(u);
     }
-    for (const team of [0, 1]) {
-      for (let l = 0; l < 3; l++) {
+    for (let team = 0; team < this.teamCount; team++) {
+      for (let l = 0; l < this.map.lanes.length; l++) {
         const col = columns[team][l];
-        col.sort((a, b) => (team === 0 ? b.d - a.d : a.d - b.d));
+        if (!col.length) continue;
+        // Order by WHICH WAY THEY ARE WALKING, not by which colony they belong
+        // to. This used to read `team === 0 ? ... : ...`, which happened to work
+        // only because on a duelling board colony 1 always walks backwards. On a
+        // ring a colony walks forwards down one road and backwards down another,
+        // and the old test put the column in reverse: the ant at the back was
+        // treated as the leader and the one in front was shoved backwards.
+        const facing = col[0].dir;
+        col.sort((a, b) => (facing > 0 ? b.d - a.d : a.d - b.d));
         for (let i = 0; i < col.length; i++) col[i].colAhead = i > 0 ? col[i - 1] : null;
       }
     }
@@ -745,12 +793,23 @@ export class Sim {
       // because a haltAt of 1 would otherwise feed an undefined siege into it
       const end = u.dir > 0 ? this.map.laneLen[u.lane] : 0;
       if (!hero && (u.dir > 0 ? u.d >= end : u.d <= end)) {
-        const foe = 1 - u.team;
+        // whose nest is at the end this ant just walked into. On a two-colony
+        // board every lane runs 0 to 1 so this is the old `1 - u.team`.
+        const foe = this.map.laneFoe(u.lane, u.dir);
         const dmg = Math.min(this.nestHp[foe], def.siege * dmgMul);
-        this.nestHp[foe] = Math.max(0, this.nestHp[foe] - dmg);
         // The bitten colony boils out: losing ground funds the answer to it, and
-        // pays more the further behind that colony already is.
+        // pays more the further behind that colony ALREADY was.
+        //
+        // Measured before the bite lands, not after. Reading it afterwards
+        // counts the damage being dealt right now as part of the deficit, so
+        // whichever colony happens to be bitten first in a tick collects a
+        // slightly bigger refund than the ones bitten after it. That is
+        // invisible in a duel, where both sides have spare sugar and the
+        // scripted fairness check never spends down to it, and it is fatal on a
+        // ring, where the advantage lands on a different colony every tick and
+        // compounds until the boards are no longer each other's copies.
         const deficit = Math.max(0, this.nestHp[u.team] - this.nestHp[foe]) / TUNING.nestHp;
+        this.nestHp[foe] = Math.max(0, this.nestHp[foe] - dmg);
         const refund = dmg * TUNING.leakRefund * (1 + deficit * TUNING.leakDesperation);
         for (const q of this.players) {
           if (q.team === foe) q.sugar += refund;
@@ -837,7 +896,7 @@ export class Sim {
   }
 
   _stepRains(dt) {
-    for (const team of [0, 1]) {
+    for (let team = 0; team < this.teamCount; team++) {
       for (let l = 0; l < this.map.lanes.length; l++) {
         if (this.rains[team][l] <= this.t) continue;
         const dps = POWERS.acidrain.damage / POWERS.acidrain.duration;
@@ -987,19 +1046,49 @@ export class Sim {
     }
   }
 
+  /**
+   * A colony whose nest has fallen is out, and the last one standing wins.
+   *
+   * With two colonies this is the old rule word for word. With more, a colony
+   * being knocked out does not end the match for everybody else, which is the
+   * whole shape of a free-for-all.
+   */
   _checkEnd() {
-    if (this.nestHp[0] <= 0 || this.nestHp[1] <= 0) {
-      this.over = true;
-      if (this.nestHp[0] <= 0 && this.nestHp[1] <= 0) {
-        this.winner = this.nestHp[0] >= this.nestHp[1] ? 0 : 1;
-        this.endReason = 'both nests fell at once, the closest call there is';
-      } else {
-        this.winner = this.nestHp[0] <= 0 ? 1 : 0;
-        this.endReason = 'nest destroyed';
+    let standing = [];
+    for (let t = 0; t < this.teamCount; t++) {
+      if (this.nestHp[t] > 0) { standing.push(t); continue; }
+      if (!this.out[t]) {
+        this.out[t] = true;
+        const n = this.map.nests[t];
+        this.fx.push([FX.FALL, Math.round(n.x), Math.round(n.y), t]);
       }
-    } else if (this.t >= TUNING.matchCap) {
+    }
+
+    if (standing.length === 1 && this.teamCount > 1) {
       this.over = true;
-      this.winner = this.nestHp[0] === this.nestHp[1] ? -1 : (this.nestHp[0] > this.nestHp[1] ? 0 : 1);
+      this.winner = standing[0];
+      this.endReason = this.teamCount > 2 ? 'last colony standing' : 'nest destroyed';
+      return;
+    }
+    if (standing.length === 0) {
+      // everything fell together, so whoever was least far gone takes it
+      this.over = true;
+      let best = -1, bestHp = -Infinity;
+      for (let t = 0; t < this.teamCount; t++) {
+        if (this.nestHp[t] > bestHp) { bestHp = this.nestHp[t]; best = t; }
+      }
+      this.winner = best;
+      this.endReason = 'every nest fell at once, the closest call there is';
+      return;
+    }
+    if (this.t >= TUNING.matchCap) {
+      this.over = true;
+      let best = -1, bestHp = -Infinity, tied = false;
+      for (const t of standing) {
+        if (this.nestHp[t] > bestHp) { bestHp = this.nestHp[t]; best = t; tied = false; }
+        else if (this.nestHp[t] === bestHp) tied = true;
+      }
+      this.winner = tied ? -1 : best;
       this.endReason = 'out of time, most nest left wins';
     }
   }
@@ -1022,10 +1111,10 @@ export class Sim {
       d: this.defs.map((d) => [d.id, d.t, d.team, d.pad, Math.round(d.hp), d.atk > 0 ? 1 : 0, d.owner]),
       w: this.walls.map((w) => [w.id, w.team, w.lane, Math.round(w.d), Math.round(w.hp)]),
       b: this.wild.map((w) => [w.id, w.t, w.lane, Math.round(w.d * 10) / 10, Math.round(w.hp), w.dir]),
-      fd: [Math.round(this.foodHold * 100) / 100, this.foodOwner],
+      fd: [Math.round(this.foodHold * 100) / 100, this.foodOwner, this.foodLead],
       ph: this.pher.map((row) => row.map((v) => Math.round(v * 100) / 100)),
-      r: [this.rallies[0].map((v) => v > this.t ? 1 : 0), this.rallies[1].map((v) => v > this.t ? 1 : 0)],
-      a: [this.rains[0].map((v) => v > this.t ? 1 : 0), this.rains[1].map((v) => v > this.t ? 1 : 0)],
+      r: this.rallies.map((row) => row.map((v) => (v > this.t ? 1 : 0))),
+      a: this.rains.map((row) => row.map((v) => (v > this.t ? 1 : 0))),
       p: this.players.map((p) => ({
         i: p.index, s: Math.floor(p.sugar), r: Math.round(this.incomeRate(p) * 10) / 10,
         e: Math.round(Math.min(TUNING.ecoCap, p.eco) * 10) / 10,
@@ -1059,6 +1148,7 @@ export class Sim {
       map: this.map.id,
       seed: this.seed,
       colors: this.colors,
+      teams: this.teamCount,
       wildlife: this.wildlifeOn,
       players: this.players.map((p) => ({
         i: p.index, id: p.id, name: p.name, team: p.team, bot: p.bot,

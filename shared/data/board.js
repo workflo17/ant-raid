@@ -172,15 +172,25 @@ export const isColor = (id) => !!colorById(id);
 export const cleanColor = (id, fallback = 'ember') => (isColor(id) ? id : fallback);
 
 /**
- * Two colonies must never wear the same colour. Team 0 keeps what it asked for
- * and team 1 moves to the first free one, so the outcome does not depend on who
- * clicked last.
+ * No two colonies may wear the same colour, because the colour is the only
+ * thing telling their ants apart.
+ *
+ * Earlier colonies keep what they asked for and later ones move to the first
+ * free colour, so the outcome depends on seat order rather than on who clicked
+ * last. There are exactly as many colours as the largest game allows, so this
+ * can always find one. Never fewer than two, since that is the smallest match.
  */
 export function resolveColors(wanted = []) {
-  const a = cleanColor(wanted[0], DEFAULT_COLORS[0]);
-  let b = cleanColor(wanted[1], DEFAULT_COLORS[1]);
-  if (b === a) b = COLOR_IDS.find((id) => id !== a);
-  return [a, b];
+  const n = Math.max(2, wanted.length);
+  const taken = new Set();
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    let pick = isColor(wanted[i]) ? wanted[i] : DEFAULT_COLORS[i] ?? null;
+    if (!pick || taken.has(pick)) pick = COLOR_IDS.find((id) => !taken.has(id));
+    taken.add(pick);
+    out.push(pick);
+  }
+  return out;
 }
 
 /** The default pair, kept as a plain two-entry array for anything not in a match. */

@@ -11,7 +11,7 @@ import { WebSocketServer } from 'ws';
 
 import { Sim } from './shared/sim.js';
 import { AiBrain } from './shared/ai.js';
-import { MAP_IDS, DEFAULT_MAP } from './shared/map.js';
+import { MAP_IDS, DEFAULT_MAP, boardForTeams } from './shared/map.js';
 import { cleanLoadout } from './shared/data/units.js';
 import { cleanQueen } from './shared/data/heroes.js';
 import { cleanColor, resolveColors } from './shared/data/board.js';
@@ -157,6 +157,10 @@ const MODES = {
   versus: { seats: 2, team: (i) => i, bot: false },
   coop:   { seats: 2, team: () => 0,  bot: true },
   pairs:  { seats: 4, team: (i) => (i < 2 ? 0 : 1), bot: false },
+  // Free-for-all. Every seat is its own colony, so the board is chosen by how
+  // many turned up rather than picked from the list: three people play a
+  // three-colony ring, six play a six.
+  ffa:    { seats: 6, minSeats: 3, team: (i) => i, bot: false, ffa: true },
 };
 const cleanMode = (m) => (Object.hasOwn(MODES, m) ? m : 'versus');
 
@@ -177,6 +181,11 @@ class Room {
   }
 
   get capacity() { return MODES[this.mode].seats; }
+  /** Free-for-all starts with anything from three up, not only when it is full. */
+  get minSeats() { return MODES[this.mode].minSeats ?? this.capacity; }
+  get isFfa() { return !!MODES[this.mode].ffa; }
+  /** A ring board sized to the people actually in the room. */
+  boardId() { return this.isFfa ? boardForTeams(this.seats.length) : this.map; }
 
   /**
    * Team colours for this room, with a clash settled the same way every time.
@@ -186,8 +195,10 @@ class Room {
    * one team's preferences and leave the other side's choice unused.
    */
   resolvedColors() {
+    const teams = new Set(this.seats.map((_, i) => this.teamFor(i)));
+    const n = Math.max(2, teams.size);
     const firstOf = (team) => this.seats.find((s, i) => this.teamFor(i) === team);
-    return resolveColors([firstOf(0)?.color, firstOf(1)?.color]);
+    return resolveColors(Array.from({ length: n }, (_, t) => firstOf(t)?.color));
   }
   get started() { return !!this.sim; }
 
@@ -251,12 +262,14 @@ class Room {
         // lobby shows what the match will show rather than what was asked for
         color: this.resolvedColors()[this.teamFor(i)],
       })),
-      canStart: this.seats.length === this.capacity,
+      canStart: this.seats.length >= this.minSeats,
+      minSeats: this.minSeats,
+      ffa: this.isFfa,
     };
   }
 
   start() {
-    if (this.started || this.seats.length < this.capacity) return false;
+    if (this.started || this.seats.length < this.minSeats) return false;
     const colors = this.resolvedColors();
     const players = this.seats.map((s, i) => ({
       id: s.pid, name: s.name, team: this.teamFor(i),
@@ -264,7 +277,7 @@ class Room {
     }));
     this.sim = new Sim({
       mode: this.mode,
-      map: this.map,
+      map: this.boardId(),
       seed: (Math.random() * 1e9) | 0,
       players,
       // co-op needs somebody to raid: the bot takes the whole other side
@@ -295,6 +308,15 @@ class Room {
       const team = this.teamFor(this.seats.indexOf(s));
       const stillThere = this.seats.some((o, i) => o.connected && this.teamFor(i) === team);
       if (stillThere) continue;
+      // In a free-for-all one colony walking out does not end anybody else's
+      // match: its nest simply falls and the rest play on.
+      if (this.isFfa) {
+        if (sim.nestHp[team] > 0) {
+          sim.nestHp[team] = 0;
+          s.gone = now;   // only once
+        }
+        continue;
+      }
       sim.over = true;
       sim.winner = MODES[this.mode].bot ? -1 : 1 - team;
       sim.endReason = `${s.name} left the table`;
