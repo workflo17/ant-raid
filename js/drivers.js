@@ -15,6 +15,26 @@ class Emitter {
   emit(k, ...a) { for (const f of this.h[k] || []) f(...a); }
 }
 
+/**
+ * When each colony was knocked out, which is the one thing a free-for-all result
+ * needs and the final state cannot give: everybody who fell reads nought there,
+ * whether they went at 2:00 or in the last bite of the match.
+ *
+ * It lives on the driver rather than in the render loop because a match keeps
+ * running in a hidden tab and requestAnimationFrame does not — the same reason
+ * the local driver carries a keepalive. A colony that fell while somebody was
+ * alt-tabbed still has to count.
+ *
+ * A STAMP RATHER THAN A POSITION. Colonies seen going down together share one,
+ * so a ring that collapses in a single step is four colonies tied rather than
+ * four ranked by seat number, which is an order nobody played.
+ */
+function noteFallen(fellAt, out, mark) {
+  if (!out) return fellAt;
+  for (let t = 0; t < out.length; t++) if (out[t] && fellAt[t] === undefined) fellAt[t] = mark;
+  return fellAt;
+}
+
 // ------------------------------------------------------------------ local
 
 export class LocalDriver extends Emitter {
@@ -37,6 +57,8 @@ export class LocalDriver extends Emitter {
     this.map = this.sim.map;
     this.brains = (opts.bots || []).map((b) => new AiBrain(this.sim, '@ai', b.difficulty));
     this.mine = opts.seats.map((_, i) => i);
+    this.fellAt = [];          // team -> the stamp it was seen to fall on
+    this.fellMark = 0;
     this.acc = 0;
     this.last = 0;
     this.running = false;
@@ -72,6 +94,7 @@ export class LocalDriver extends Emitter {
       this.acc -= DT;
       this.sim.step(DT);
       for (const b of this.brains) b.update(DT);
+      noteFallen(this.fellAt, this.sim.out, ++this.fellMark);
       if (this.sim.over) break;
     }
     if (this.sim.over) this.finish();
@@ -120,6 +143,8 @@ export class NetDriver extends Emitter {
     super();
     this.online = true;
     this.buf = [];
+    this.fellAt = [];
+    this.fellMark = 0;
     this.mine = [];
     this.pid = null;
     this.code = null;
@@ -166,11 +191,16 @@ export class NetDriver extends Emitter {
         const me = m.full.players.find((p) => p.id === this.pid);
         this.mine = me ? [me.i] : [];
         this.buf = [{ s: m.full.snap, at: performance.now() }];
+        this.fellAt = [];
+        this.fellMark = 0;
         this.emit('start', m.full);
         break;
       }
       case 'snap':
         this.buf.push({ s: m.s, at: performance.now() });
+        // read before the buffer is trimmed, and off the socket rather than off
+        // a frame, so a hidden tab still sees who went and in what order
+        noteFallen(this.fellAt, m.s.out, ++this.fellMark);
         if (this.buf.length > 12) this.buf.shift();
         break;
       case 'over':

@@ -91,20 +91,93 @@ const bar = (frac, width = 10) => {
   return '█'.repeat(n) + '·'.repeat(width - n);
 };
 
+/** A ring holds six colonies at the most, so the awkward teens never come up. */
+const ORDINALS = ['', '1st', '2nd', '3rd', '4th', '5th', '6th'];
+const ordinal = (n) => ORDINALS[n] || `${n}th`;
+
+// THREE COLONIES OR MORE IS NOT A DUEL, the same rule the nest bar goes by.
+// A duel keeps every word it has always had. A free-for-all has no "them" to
+// name: it gets whoever of the others finished best, and a placing, because two
+// bars out of six cannot say on their own whether you came second or fifth.
+const isMany = (res) => (res.teams || 2) > 2;
+const rivalOf = (res) => res.rivalTeam ?? 1 - res.myTeam;
+const rivalLabel = (res) => (isMany(res)
+  ? res.rivalName || teamTint(rivalOf(res)).name
+  : res.theirName || 'Them');
+
+/**
+ * How the colonies finished against each other.
+ *
+ * A colony still standing is ahead of every colony that fell; two still
+ * standing rank on what is left of their nests; two that fell rank on which of
+ * them lasted longer. That last comparison is the whole reason the driver keeps
+ * `fellAt` at all, because the final state has everybody who fell on nought and
+ * cannot tell second from fifth. Colonies that went down together are tied.
+ *
+ * A colony the driver never saw fall gets Infinity: it went in a step nobody
+ * observed, which can only be the last one.
+ *
+ * The WINNER is put above all of it, because that is the sim's own verdict and
+ * the scoreboard on the same screen already says so. It is not always the last
+ * nest standing: a ring can collapse entirely in one step, and then the match
+ * goes to whoever was least far gone. Ranking that colony second because three
+ * others fell in the same step as it would contradict the page it is printed on.
+ */
+function ranker(res) {
+  const hp = res.nestHp || [];
+  const out = res.out || hp.map((h) => h <= 0);
+  const fellAt = res.fellAt || [];
+  const rank = (t) => (t === res.winner ? [2, 0]
+    : out[t] ? [0, fellAt[t] ?? Infinity]
+    : [1, hp[t]]);
+  return { n: hp.length, rank, ahead: (a, b) => (a[0] !== b[0] ? a[0] > b[0] : a[1] > b[1]) };
+}
+
+/**
+ * Where you finished, counting the colonies that beat you. Colonies that tie
+ * share a place, so two level on health are both second and nobody is third.
+ */
+export function placeOf(res) {
+  const { n, rank, ahead } = ranker(res);
+  const mine = rank(res.myTeam);
+  let place = 1;
+  for (let t = 0; t < n; t++) if (t !== res.myTeam && ahead(rank(t), mine)) place++;
+  return place;
+}
+
+/**
+ * The colony the card holds you up against: whoever of the OTHERS finished
+ * best. Not whoever has the most nest left — win a ring by outlasting everybody
+ * and all of them read nought, so health alone picks an arbitrary one, which is
+ * the bug this whole change is about. The one that lasted longest is the runner
+ * up, and that is a thing worth putting on the card.
+ */
+export function bestOther(res) {
+  const { n, rank, ahead } = ranker(res);
+  let best = res.myTeam === 0 ? 1 % n : 0;
+  for (let t = 0; t < n; t++) if (t !== res.myTeam && ahead(rank(t), rank(best))) best = t;
+  return best;
+}
+
 /**
  * Spoiler-light: it shows how close it was and how it ended, without listing
  * what anyone built. Short enough to paste into a chat without wrapping.
  */
 export function shareText(res) {
-  const map = mapList().find((m) => m.id === res.map);
-  const mine = Math.max(0, res.nestHp[res.myTeam]);
-  const theirs = Math.max(0, res.nestHp[1 - res.myTeam]);
+  // mapList() defaults to the duelling boards, so a ring board fell through it
+  // and the card printed the raw id: "ring5" where the board is called The Five
+  // Hollows. It is keyed by colony count, which is a thing the result now knows.
+  const map = mapList(res.teams || 2).find((m) => m.id === res.map);
+  const many = isMany(res);
+  const mine = Math.max(0, res.nestHp[res.myTeam] ?? 0);
+  const theirs = Math.max(0, res.nestHp[rivalOf(res)] ?? 0);
   const mins = Math.floor(res.t / 60), secs = String(Math.floor(res.t % 60)).padStart(2, '0');
   const lines = [
     `Ant Raid  ·  ${map ? map.name : res.map}`,
     `${bar(mine / TUNING.nestHp)}  you ${Math.ceil(mine)}`,
-    `${bar(theirs / TUNING.nestHp)}  them ${Math.ceil(theirs)}`,
-    `${mins}:${secs}  ·  ${res.sent} ants sent  ·  ${res.kills} kills`,
+    `${bar(theirs / TUNING.nestHp)}  ${many ? rivalLabel(res) : 'them'} ${Math.ceil(theirs)}`,
+    `${many ? `${ordinal(placeOf(res))} of ${res.teams}  ·  ` : ''}${mins}:${secs}`
+      + `  ·  ${res.sent} ants sent  ·  ${res.kills} kills`,
   ];
   if (res.comeback >= 20) lines.push(`came back from ${Math.round(res.comeback)} down`);
   if (res.url) lines.push(res.url);
@@ -124,9 +197,10 @@ export function drawResultCard(cv, res) {
   const c = cv.getContext('2d');
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const mineT = res.myTeam, theirsT = 1 - res.myTeam;
-  const mine = Math.max(0, res.nestHp[mineT]);
-  const theirs = Math.max(0, res.nestHp[theirsT]);
+  const many = isMany(res);
+  const mineT = res.myTeam, theirsT = rivalOf(res);
+  const mine = Math.max(0, res.nestHp[mineT] ?? 0);
+  const theirs = Math.max(0, res.nestHp[theirsT] ?? 0);
   const won = res.won;
 
   // ground
@@ -146,16 +220,21 @@ export function drawResultCard(cv, res) {
   c.textAlign = 'center';
   c.fillStyle = won ? '#3f7a22' : '#c33a1e';
   c.font = '800 54px "Baloo 2", sans-serif';
-  c.fillText(won ? 'THEIR NEST IS RUBBLE' : 'YOUR NEST IS RUBBLE', W / 2, 74);
+  // A duel has one other nest, so the headline can talk about it. A free-for-all
+  // ends with most of the board in rubble whoever won, and "their nest" is four
+  // nests: it says where you came instead, which is true whether the match was
+  // won by outlasting everybody or by holding the most nest at the whistle.
+  c.fillText(many ? `${ordinal(placeOf(res)).toUpperCase()} OF ${res.teams}`
+    : won ? 'THEIR NEST IS RUBBLE' : 'YOUR NEST IS RUBBLE', W / 2, 74);
   c.fillStyle = '#2b1a10';
   c.font = '700 20px "Baloo 2", sans-serif';
-  const map = mapList().find((m) => m.id === res.map);
+  const map = mapList(res.teams || 2).find((m) => m.id === res.map);   // by colony count, see shareText
   c.fillText(`${map ? map.name : res.map}  ·  ${Math.floor(res.t / 60)}:${String(Math.floor(res.t % 60)).padStart(2, '0')}`, W / 2, 104);
 
   // the two nests, facing each other
   const rows = [
     { label: res.myName || 'You', hp: mine, team: mineT, y: 168 },
-    { label: res.theirName || 'Them', hp: theirs, team: theirsT, y: 246 },
+    { label: rivalLabel(res), hp: theirs, team: theirsT, y: 246 },
   ];
   c.textAlign = 'left';
   for (const r of rows) {

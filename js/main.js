@@ -6,7 +6,7 @@ import { buildView } from './view.js';
 import { DT } from '../shared/data/board.js';
 import { initBoard, draw, worldFrom, playFx, setHoverPad, tinted, setMap, showEmote } from './board.js';
 import { paintThumb } from './scenery.js';
-import { recordMatch, recordLine, loadRecord, drawResultCard, shareResult, shareText } from './record.js';
+import { recordMatch, recordLine, loadRecord, drawResultCard, shareResult, shareText, bestOther } from './record.js';
 import { Hud } from './hud.js';
 import { drawAnt } from './render/ants.js';
 import { resetParticles } from './particles.js';
@@ -30,6 +30,7 @@ let driver = null, huds = [], mouseSeat = 0, myTeam = 0, lastT = 0, raf = 0, mod
 let padMenu = null;
 let MAP = null;                                  // the built map this match is on
 let worstDeficit = 0;                            // the hole you climbed out of
+let colonyNameOf = null;                         // names this match's colonies, set per match
 let lastLaneTap = null;                          // for the touch double-tap send
 let lastResult = null;                           // what the share card describes
 let chosenMap = loadPref('antraid.map') || DEFAULT_MAP;
@@ -701,6 +702,7 @@ function wireDriver(seatSpecs, netIndex) {
     const joined = names.join(' & ');
     return joined.length <= 18 ? joined : `${names[0]} +${names.length - 1}`;
   };
+  colonyNameOf = colonyName;
   buildNestBar(full?.teams || MAP.nests.length, seatSpecs[0]?.team ?? 0, colonyName);
   if (full) for (const h of huds) h.padIdx = full.players.find((p) => p.i === h.meIndex)?.pads || [];
 
@@ -1014,12 +1016,36 @@ function showResult(m) {
   const meStat = m.stats.find((s) => s.i === meIdx) || m.stats[0];
   const foeStat = m.stats.find((s) => s.team !== mineTeam) || m.stats[1];
   const view = driver?.view?.();
+
+  // WHO THE CARD HOLDS YOU UP AGAINST. In a duel it is the other colony and
+  // there is nothing to choose. On a ring there are up to five of them, and
+  // `1 - myTeam` picked a colony that had nothing to do with your match — or,
+  // from seat two onwards, no colony at all.
+  const nestHp = view?.nestHp || [0, 0];
+  const teams = nestHp.length;
+  const fellAt = driver?.fellAt || [];
+  // The view is an INTERPOLATED one and runs 120ms behind the newest snapshot,
+  // so at the whistle it can still be painting a nest that has already gone —
+  // seen live as a colony reading nought and not-out in the same result. The
+  // driver read the raw snapshots off the socket, so it is the one to ask.
+  const out = nestHp.map((h, t) => fellAt[t] !== undefined || (view?.nestOut?.[t] ?? h <= 0));
+  const rivalTeam = bestOther({ myTeam: mineTeam, winner: m.winner, nestHp, out, fellAt });
+
   lastResult = {
     won, drew,
     map: MAP?.id,
     myTeam: mineTeam,
     myName: meStat?.name, theirName: foeStat?.name,
-    nestHp: view?.nestHp || [0, 0],
+    // a free-for-all is a field, not an opponent: the best of the rest, and
+    // where you came in it
+    teams,
+    rivalTeam,
+    rivalName: colonyNameOf?.(rivalTeam),
+    // raw, so the placing is worked out once where it is written down
+    winner: m.winner,
+    out,
+    fellAt,
+    nestHp,
     t: view?.t || 0,
     sent: meStat?.sent || 0,
     kills: meStat?.kills || 0,
@@ -1136,11 +1162,10 @@ window.AR = {
   /** Burst-step a local match: AR.step(600) runs 20 seconds of simulation now. */
   step(ticks = 30) {
     if (!driver?.sim) return 'no local sim';
-    for (let i = 0; i < ticks && !driver.sim.over; i++) {
-      driver.sim.step(1 / 30);
-      for (const b of driver.brains) b.update(1 / 30);
-    }
-    if (driver.sim.over) driver.finish();
+    // through the driver rather than straight into the sim: the driver keeps
+    // book on the way past (which colonies have gone, and in what order) and a
+    // QA hook that steps around it is testing a path nobody plays
+    for (let i = 0; i < ticks && !driver.sim.over; i++) driver.advance(DT);
     return driver.sim.t.toFixed(1);
   },
   /**

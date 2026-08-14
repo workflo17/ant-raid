@@ -116,7 +116,10 @@ export function ringBoard(n) {
     for (let k = 0; k < RING.lanesPerPair; k++) {
       const offset = (k - (RING.lanesPerPair - 1) / 2) * RING.laneGap * 2;
       lanes.push({
-        name: k === 0 ? `Outer to ${j + 1}` : `Inner to ${j + 1}`,
+        // k === 0 is the NEGATIVE offset, which is the road pulled toward the
+        // middle of the board: the inner one. The names were the wrong way
+        // round, and they are read out on the lane rail and the build menu.
+        name: k === 0 ? `Inner to ${j + 1}` : `Outer to ${j + 1}`,
         key: '',                 // filled in per colony by the client
         ends: [i, j],
         points: ringLane(i, n, cx, cy, offset),
