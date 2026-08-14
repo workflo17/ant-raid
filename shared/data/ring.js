@@ -24,7 +24,7 @@
 // colony opposite, which is the whole shape of the mode: you have two people who
 // can hurt you, and hitting one of them helps the other.
 
-import { TAU } from '../util.js';
+import { TAU, buildPath, distToPath } from '../util.js';
 
 /** Wider than the duelling boards, because six nests need the room. */
 export const RING_W = 1280;
@@ -126,10 +126,11 @@ export function ringBoard(n) {
 
   // Pads in mirrored pairs about each colony's own radius. The mirroring is what
   // makes a road fair to both colonies on it, not just each colony to itself.
+  const paths = lanes.map((l) => buildPath(l.points));
   const pads = [];
   for (let i = 0; i < n; i++) {
     const a = angleOf(i, n);
-    const mine = lanes.filter((l) => l.ends.includes(i)).map((l) => lanes.indexOf(l));
+    const mine = lanes.map((l, id) => id).filter((id) => lanes[id].ends.includes(i));
     // two pads leaning toward each neighbour, at matching angles either side
     const spots = [
       { turn: +RING.padSpread, out: RING.padOut },
@@ -137,16 +138,30 @@ export function ringBoard(n) {
       { turn: +RING.padSpread * 0.46, out: RING.padOut * 1.5 },
       { turn: -RING.padSpread * 0.46, out: RING.padOut * 1.5 },
     ];
-    spots.forEach((sp, k) => {
+    spots.forEach((sp) => {
       // out from the nest, and round toward one neighbour or the other
       const dir = a + Math.PI + sp.turn;     // back toward the middle of the board
-      pads.push({
-        team: i,
-        // the lane this pad is meant to cover, so the build menu can name it
-        lane: mine[k % mine.length],
-        x: round4(nests[i].x + Math.cos(dir) * sp.out),
-        y: round4(nests[i].y + Math.sin(dir) * sp.out),
-      });
+      const x = round4(nests[i].x + Math.cos(dir) * sp.out);
+      const y = round4(nests[i].y + Math.sin(dir) * sp.out);
+      // THE ROAD THIS PAD ACTUALLY COVERS, measured, not counted off.
+      //
+      // It used to be `mine[k]` — this colony's roads in BOARD order, which is
+      // not the same order for every colony: colony 0's list starts with the two
+      // roads it walks out on and everybody else's starts with the two they walk
+      // back down. So the same pad position carried a different label depending
+      // on the seat, and since the bot builds on whichever free pad claims the
+      // lane under pressure, colony 0 defended a different part of its own nest
+      // than the other five did. On a board that is provably rotationally fair
+      // it won 7 matches in 12.
+      //
+      // Distance to the road is rotation-invariant by construction, so measuring
+      // it cannot pick up a seat.
+      let lane = mine[0], near = Infinity;
+      for (const id of mine) {
+        const d = distToPath(paths[id], x, y);
+        if (d < near) { near = d; lane = id; }
+      }
+      pads.push({ team: i, lane, x, y });
     });
   }
 

@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { Sim } from '../shared/sim.js';
 import { AiBrain, botLoadout } from '../shared/ai.js';
 import { buildMap } from '../shared/map.js';
+import { distToPath } from '../shared/util.js';
+// the one client module with a contract with the simulation, and no DOM in it
+import { buildView } from '../js/view.js';
 import {
   DT, TUNING, WORLD_W, WORLD_H, PHEROMONE,
   COLONY_COLORS, DEFAULT_COLORS, isColor, cleanColor, resolveColors,
@@ -696,6 +699,60 @@ for (const n of RING_SIZES) {
   });
 }
 
+/**
+ * Rotational fairness for a BOT, which is a different claim from rotational
+ * fairness for the board.
+ *
+ * The board test above plays one script from every colony and requires the same
+ * result. That proves the geometry. It does not prove that a player READS the
+ * geometry the same way from every seat, and twice it did not:
+ *
+ *   1. The bot listed its roads in board order, which starts at a different
+ *      place round the ring for each colony, so every tie broke in a different
+ *      direction. Colony 3 of 4 opened toward nobody and won 6 matches in 8.
+ *   2. Its road out and its road back are the SAME distance from the herd, and
+ *      a rotated float is only equal to a part in 1e13. A bare `<` let that last
+ *      bit choose, and it chose differently for different seats: on a ring of
+ *      five, colony 2 alone pushed the wrong way round the ring all match.
+ *
+ * Both are invisible to any test that only looks at the board, and both were
+ * worth more than every tuning number in the game put together. So: everything
+ * the bot decides before a single ant has moved has to come out the same for
+ * every colony, expressed in that colony's own frame.
+ */
+for (const n of RING_SIZES) {
+  test(`ring${n}: the bot reads the same board from every colony`, () => {
+    const map = buildMap(`ring${n}`);
+    const L = 2 * n;
+    // a lane id as an offset from this colony's own first road
+    const slot = (team, lane) => (((lane - 2 * team) % L) + L) % L;
+
+    // the pads: same road covered, from the same place, for everybody
+    const padSig = map.pads.map((ps, t) => ps.map((p) => slot(t, p.lane)).join(','));
+    assert.equal(new Set(padSig).size, 1, `pads label their roads differently: ${padSig.join(' vs ')}`);
+
+    const sim = new Sim({
+      mode: 'ffa', map: `ring${n}`, seed: 31, wildlife: false,
+      players: Array.from({ length: n }, (_, i) => ({ id: `P${i}`, name: `P${i}`, team: i })),
+    });
+    const brains = sim.players.map((p) => new AiBrain(sim, p.id, 'normal'));
+
+    const lanes = brains.map((b) => b.myLanes.map((l) => slot(b.team, l)).join(','));
+    assert.equal(new Set(lanes).size, 1, `colonies order their roads differently: ${lanes.join(' vs ')}`);
+
+    const opening = brains.map((b) => b.myLanes.indexOf(b.pushLane));
+    assert.equal(new Set(opening).size, 1, `colonies open on different roads: ${opening.join('/')}`);
+
+    for (const b of brains) b.cov = b._coverageAll();
+    const herd = brains.map((b) => b.myLanes.indexOf(b._foodLane()));
+    assert.equal(new Set(herd).size, 1, `colonies pick different roads to the herd: ${herd.join('/')}`);
+    // and the reason that one is delicate: those roads are exactly as far off
+    const F = map.food;
+    const reach = brains[0].myLanes.map((l) => distToPath(map.lanes[l].path, F.x, F.y));
+    assert.ok(Math.abs(reach[0] - reach[2]) < 1e-6, 'the herd tie this guards has stopped being a tie');
+  });
+}
+
 test('a road you are not on cannot be raided down', () => {
   const n = 4;
   const sim = new Sim({
@@ -727,6 +784,135 @@ test('a free-for-all outlives a colony falling, and the last one takes it', () =
   assert.equal(sim.over, true);
   assert.equal(sim.winner, 0);
   assert.match(sim.endReason, /last colony standing/);
+});
+
+/** A ring of four, every seat its own colony, everything affordable. */
+const ring = (n = 4, opts = {}) => {
+  const sim = new Sim({
+    mode: 'ffa', map: `ring${n}`, seed: 5, wildlife: false,
+    players: Array.from({ length: n }, (_, i) => ({ id: `P${i}`, name: `P${i}`, team: i })),
+    ...opts,
+  });
+  for (const p of sim.players) { p.roster = [...RAIDER_IDS]; p.sugar = 9999; }
+  return sim;
+};
+
+test('a knocked-out colony leaves the board and stops playing', () => {
+  const sim = ring();
+  sim.command('P1', { kind: 'send', unit: 'worker', lane: sim.map.lanesFor(1)[0] });
+  sim.command('P1', { kind: 'build', def: 'worker', pad: 0 });
+  assert.ok(sim.units.some((u) => u.team === 1));
+  assert.ok(sim.defs.some((d) => d.team === 1));
+
+  sim.nestHp[1] = 0;
+  sim.step(DT);
+  assert.equal(sim.over, false, 'one colony falling ended everybody else\'s match');
+  assert.equal(sim.units.some((u) => u.team === 1), false, 'its column kept marching');
+  assert.equal(sim.defs.some((d) => d.team === 1), false, 'its pads kept firing');
+  // and it cannot buy its way back in, however much sugar it is sitting on
+  assert.match(sim.command('P1', { kind: 'send', unit: 'worker', lane: sim.map.lanesFor(1)[0] }).why, /nest has fallen/);
+  assert.match(sim.command('P1', { kind: 'power', power: 'rally', lane: sim.map.lanesFor(1)[0] }).why, /nest has fallen/);
+  // the colonies still standing are untouched
+  assert.equal(sim.command('P0', { kind: 'send', unit: 'worker', lane: sim.map.lanesFor(0)[0] }).ok, true);
+});
+
+test('a raid walks through a fallen nest and out the far side', () => {
+  const n = 4;
+  const sim = ring(n);
+  sim.nestHp[1] = 0;
+  sim.step(DT);                       // colony 1 is out, and off the board
+
+  // colony 0 sends down a road that ends at the ruins of colony 1
+  const road = sim.map.lanesFor(0).find((l) => sim.map.lanes[l].ends.includes(1));
+  sim.command('P0', { kind: 'send', unit: 'trapjaw', lane: road });
+  const ant = sim.units.find((u) => u.team === 0);
+  assert.ok(ant);
+  ant.d = sim.map.laneLen[road];      // put it on the doorstep
+  const hpBefore = sim.nestHp[2];
+  sim.step(DT);
+
+  assert.equal(ant.hp > 0, true, 'it died at the ruins instead of walking on');
+  assert.notEqual(ant.lane, road, 'it stayed on the road it came in on');
+  assert.ok(sim.map.lanes[ant.lane].ends.includes(2), 'it did not carry on toward the next colony round');
+  assert.equal(sim.map.laneFoe(ant.lane, ant.dir), 2, 'it is walking the wrong way down the next road');
+  assert.equal(sim.nestHp[2], hpBefore, 'walking through a ruin damaged a nest it never reached');
+  // ...and the road it carried on to is the same one of the pair it came in on
+  assert.equal(ant.lane % 2, road % 2);
+
+  // a duelling board has no road that leads onward, so nothing to walk through
+  assert.equal(buildMap(DEFAULT_MAP).onwardFrom(0, 1), null);
+});
+
+test('a colony can only aim a power down its own roads, and walls its own half', () => {
+  const sim = ring(4);
+  const mine = sim.map.lanesFor(2);
+  const notMine = sim.map.lanes.find((l) => !l.ends.includes(2)).id;
+  for (const power of ['rally', 'acidrain', 'barricade']) {
+    assert.match(sim.command('P2', { kind: 'power', power, lane: notMine }).why, /does not run from your nest/);
+  }
+  assert.match(sim.command('P2', { kind: 'mark', lane: notMine }).why, /does not run from your nest/);
+
+  // a pebble wall goes in YOUR half, whichever end of the road you walk in from
+  for (const lane of mine) {
+    sim.players[2].powerCd.barricade = 0;
+    assert.equal(sim.command('P2', { kind: 'power', power: 'barricade', lane }).ok, true);
+    const w = sim.walls.find((x) => x.team === 2 && x.lane === lane);
+    const dir = sim.map.laneSideFor(lane, 2);
+    const fromMe = dir > 0 ? w.d : sim.map.laneLen[lane] - w.d;
+    assert.ok(fromMe < sim.map.laneLen[lane] * 0.5,
+      `colony 2 walled the far end of road ${lane} (${fromMe.toFixed(0)} of ${sim.map.laneLen[lane].toFixed(0)})`);
+  }
+});
+
+test('a free-for-all starts bleeding sooner than a duel does', () => {
+  const solo = duel();
+  const many = ring(5);
+  assert.equal(solo.sudden.at, TUNING.suddenDeathAt, 'a duel stopped using the duelling number');
+  assert.equal(solo.sudden.dps, TUNING.suddenDeathDps);
+  assert.ok(many.sudden.at < solo.sudden.at, 'a free-for-all bleeds no sooner than a duel');
+  assert.ok(many.sudden.dps > solo.sudden.dps);
+  // pairs and co-op are two colonies however many people are sitting in them
+  assert.equal(foursome().sudden.at, TUNING.suddenDeathAt);
+});
+
+test('the board carries one crowd, however many colonies share it', () => {
+  // two colonies keep the flat per-player ceiling they were tuned against
+  assert.equal(duel().unitCapFor(duel().players[0]), TUNING.maxUnitsPerPlayer);
+  assert.equal(foursome().unitCapFor(foursome().players[0]),
+    Math.round(TUNING.maxUnitsPerPlayer * TUNING.teamCapMul));
+  // more colonies share it rather than each bringing a full column
+  const caps = [3, 4, 5, 6].map((n) => { const s = ring(n); return s.unitCapFor(s.players[0]); });
+  for (let i = 1; i < caps.length; i++) assert.ok(caps[i] <= caps[i - 1], `caps went up: ${caps.join('/')}`);
+  assert.ok(caps[0] <= TUNING.maxUnitsPerPlayer);
+  assert.ok(caps[3] >= TUNING.boardUnitsFloor, 'a six-way was left without a column each');
+  // and the whole board stays inside a budget it can actually draw
+  const totals = [3, 4, 5, 6].map((n, i) => n * caps[i]);
+  for (const t of totals) assert.ok(t <= TUNING.boardUnits * 1.25, `board budget blown: ${totals.join('/')}`);
+});
+
+test('the wire says which way an ant is walking, and the renderer believes it', () => {
+  // js/view.js is the only client module the simulation has a contract with, and
+  // it has no DOM in it, so the contract is testable here. It used to work the
+  // heading out as `team === 0 ? forwards : backwards`, which is a fact about
+  // duels rather than about ants: on a ring one colony walks out down two roads
+  // and back down two others, and half its ants were drawn moonwalking.
+  const sim = ring(4);
+  const back = sim.map.lanesFor(0).find((l) => sim.map.laneSideFor(l, 0) < 0);
+  const fwd = sim.map.lanesFor(0).find((l) => sim.map.laneSideFor(l, 0) > 0);
+  sim.command('P0', { kind: 'send', unit: 'trapjaw', lane: back });
+  sim.command('P0', { kind: 'send', unit: 'trapjaw', lane: fwd });
+  sim.step(DT);
+
+  const snap = sim.snapshot();
+  const view = buildView(sim.map, snap, snap, 1);
+  for (const lane of [back, fwd]) {
+    const u = sim.units.find((x) => x.lane === lane);
+    const drawn = view.units.find((x) => x.id === u.id);
+    const road = sim.map.laneAt(lane, u.d, { x: 0, y: 0, angle: 0, seg: 0 });
+    const want = u.dir > 0 ? road.angle : road.angle + Math.PI;
+    const off = Math.abs(Math.atan2(Math.sin(drawn.angle - want), Math.cos(drawn.angle - want)));
+    assert.ok(off < 1e-9, `an ant walking ${u.dir > 0 ? 'out' : 'back'} is drawn ${(off * 57.3).toFixed(0)} degrees wrong`);
+  }
 });
 
 test('six colonies get six different colours', () => {

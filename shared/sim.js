@@ -3,7 +3,9 @@
 // hot-seat run the very same class inside the page. No DOM, no node builtins.
 
 import { dist, clamp, mulberry32 } from './util.js';
-import { TUNING, WILDLIFE, FOOD, PHEROMONE, isColor, resolveColors } from './data/board.js';
+import {
+  TUNING, WILDLIFE, FOOD, PHEROMONE, isColor, resolveColors, suddenDeathFor,
+} from './data/board.js';
 import { buildMap, DEFAULT_MAP, WORLD_W } from './map.js';
 import {
   RAIDERS, DEFENDERS, POWERS, RAIDER_IDS, DEFENDER_IDS, POWER_IDS,
@@ -69,6 +71,8 @@ export class Sim {
 
     this.nestHp = new Array(this.teamCount).fill(TUNING.nestHp);
     this.out = new Array(this.teamCount).fill(false);   // colonies already gone
+    // read once: a match cannot change how many colonies are in it
+    this.sudden = suddenDeathFor(this.teamCount);
     // rallies[team][lane] and rains[team][lane] hold an expiry time
     this.rallies = perTeam(0);
     this.rains = perTeam(0);
@@ -189,9 +193,14 @@ export class Sim {
    * a colony of two cannot put twice as much on a board of the same size.
    */
   unitCapFor(p) {
-    const n = this._teamSize(p.team);
-    if (n <= 1) return TUNING.maxUnitsPerPlayer;
-    return Math.round(TUNING.maxUnitsPerPlayer * TUNING.teamCapMul);
+    // What the BOARD can carry, shared between the colonies on it. With two
+    // this is the old flat ceiling: 150/2 is 75, above the 55 a player has
+    // always had, so nothing about a duel, a pair or a co-op game changes.
+    let cap = Math.min(TUNING.maxUnitsPerPlayer,
+      Math.max(TUNING.boardUnitsFloor, Math.round(TUNING.boardUnits / this.teamCount)));
+    // and then shared again between team-mates sitting in the same colony
+    if (this._teamSize(p.team) > 1) cap = Math.round(cap * TUNING.teamCapMul);
+    return cap;
   }
 
   /** How many players share a colony, so the herd pays a team and not a head. */
@@ -269,6 +278,11 @@ export class Sim {
     if (this.over) return { ok: false, why: 'match over' };
     const p = this.playerById(playerId);
     if (!p) return { ok: false, why: 'no such player' };
+    // A colony with no nest left cannot buy its way back in. With two colonies
+    // `over` has already caught this in the same tick, so the rule only ever
+    // fires in a free-for-all — where without it a colony that can no longer win
+    // still gets a full income to decide who does.
+    if (this.out[p.team]) return { ok: false, why: 'your nest has fallen' };
     switch (cmd.kind) {
       case 'send': return this._send(p, cmd);
       case 'build': return this._build(p, cmd);
@@ -535,6 +549,15 @@ export class Sim {
     const def = POWERS[cmd.power];
     const lane = cmd.lane | 0;
     if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
+    // A power lands on ONE ROAD, and the roads you may act on are the ones that
+    // run from your nest — the same rule `send` and `queen` already apply, and
+    // the same four the lane rail offers you. On a duelling board every road
+    // does, so nothing changes there. On a ring it matters: acid rain on a road
+    // between two OTHER colonies would let you hurt somebody the mode says you
+    // cannot reach, which is the one thing the neighbours-only shape exists to
+    // prevent.
+    const dir = this.map.laneSideFor(lane, p.team);
+    if (!dir) return { ok: false, why: 'that road does not run from your nest' };
     if (p.powerCd[cmd.power] > 0) return { ok: false, why: 'still recharging' };
     if (p.sugar < def.cost) return { ok: false, why: 'not enough sugar' };
     p.sugar -= def.cost;
@@ -546,7 +569,12 @@ export class Sim {
     } else if (cmd.power === 'acidrain') {
       this.rains[p.team][lane] = this.t + def.duration;
     } else if (cmd.power === 'barricade') {
-      const at = p.team === 0 ? def.at : 1 - def.at;
+      // A pebble wall goes in YOUR half, and your half of a road is the end you
+      // walk in from. `p.team === 0 ? at : 1 - at` said the same thing in a duel,
+      // where colony 0 always enters at zero and colony 1 always at the far end.
+      // On a ring one colony does both, on different roads, so half its walls
+      // were being dropped on its neighbour's doorstep instead of its own.
+      const at = dir > 0 ? def.at : 1 - def.at;
       const d = this.map.laneLen[lane] * at;
       const old = this.walls.find((w) => w.team === p.team && w.lane === lane);
       if (old) this.walls.splice(this.walls.indexOf(old), 1);
@@ -566,6 +594,10 @@ export class Sim {
   _mark(p, cmd) {
     const lane = cmd.lane | 0;
     if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
+    // your own roads only: a trail on a road none of your ants can walk is
+    // thirty sugar laid on the ground for nobody
+    const dir = this.map.laneSideFor(lane, p.team);
+    if (!dir) return { ok: false, why: 'that road does not run from your nest' };
     if (p.markCd > 0) return { ok: false, why: 'the scent is still settling' };
     if (p.sugar < PHEROMONE.cost) return { ok: false, why: 'not enough sugar' };
     if (this.pher[p.team][lane] >= 1) return { ok: false, why: 'that road is as strong as it gets' };
@@ -573,7 +605,7 @@ export class Sim {
     p.spent += PHEROMONE.cost;
     p.markCd = PHEROMONE.cooldown;
     this.pher[p.team][lane] = Math.min(1, this.pher[p.team][lane] + PHEROMONE.perMark);
-    const at = this.map.laneAt(lane, this.map.laneLen[lane] * (p.team === 0 ? 0.2 : 0.8), scratch);
+    const at = this.map.laneAt(lane, this.map.laneLen[lane] * (dir > 0 ? 0.2 : 0.8), scratch);
     this.fx.push([FX.MARK, Math.round(at.x), Math.round(at.y), p.team]);
     return { ok: true };
   }
@@ -627,8 +659,8 @@ export class Sim {
     this._applyDamage();
     this._cull();
 
-    if (this.t >= TUNING.suddenDeathAt) {
-      const bleed = TUNING.suddenDeathDps * dt;
+    if (this.t >= this.sudden.at) {
+      const bleed = this.sudden.dps * dt;
       for (let t = 0; t < this.teamCount; t++) this.nestHp[t] = Math.max(0, this.nestHp[t] - bleed);
     }
     this._checkEnd();
@@ -733,6 +765,13 @@ export class Sim {
       u.target = this._raiderTarget(u, def);
     }
 
+    // Raiders that walked into a nest already in ruins and are carrying on out
+    // the far side. Collected rather than moved on the spot: a unit's `d` is
+    // read by whoever is queued behind it for the rest of this pass, and yanking
+    // it back to the start of another road drags its whole column backwards with
+    // it. They are re-roaded once everybody has moved.
+    const through = [];
+
     // Pass 2: everyone acts. Damage lands in a buffer applied after the pass, so
     // two ants trading blows always trade, whoever the array happens to list first.
     for (const u of this.units) {
@@ -796,6 +835,17 @@ export class Sim {
         // whose nest is at the end this ant just walked into. On a two-colony
         // board every lane runs 0 to 1 so this is the old `1 - u.team`.
         const foe = this.map.laneFoe(u.lane, u.dir);
+        // THROUGH THE RUINS. A nest that has already fallen is not a target and
+        // not a wall either: the raid keeps going, out of the dead colony's far
+        // side and on to whoever is still standing beyond it. This is what stops
+        // a ring from falling into disconnected pieces as colonies drop out, and
+        // it cannot fire in a duel, where there is no road that leads onward.
+        if (this.out[foe]) {
+          const on = foe === u.team ? null : this.map.onwardFrom(u.lane, foe);
+          if (on) through.push([u, on]);
+          else u.hp = 0;      // nowhere left to walk
+          continue;
+        }
         const dmg = Math.min(this.nestHp[foe], def.siege * dmgMul);
         // The bitten colony boils out: losing ground funds the answer to it, and
         // pays more the further behind that colony ALREADY was.
@@ -815,10 +865,24 @@ export class Sim {
           if (q.team === foe) q.sugar += refund;
         }
         const n = this.map.nests[foe];
-        this.fx.push([FX.NEST, n.x, n.y, Math.round(dmg)]);
+        // WHO BIT IT is the fifth slot. With two colonies the answer was always
+        // "the other one" and nobody had to say it; with six it is the only
+        // record of which neighbour did the softening, and every measurement of
+        // whether raiding pays in a free-for-all is built on it. The client
+        // destructures four and ignores the rest.
+        this.fx.push([FX.NEST, n.x, n.y, Math.round(dmg), u.team]);
         if (def.blast) this._blast(n.x, n.y, def.blast.r, def.blast.damage * dmgMul, u.team, u.owner);
         u.hp = 0;
       }
+    }
+
+    // and now the ones that walked through a ruin, onto the far side of it
+    for (const [u, on] of through) {
+      u.lane = on.lane;
+      u.dir = on.dir;
+      u.d = on.dir > 0 ? 0 : this.map.laneLen[on.lane];
+      u.seg = 0;
+      u.colAhead = null;
     }
   }
 
@@ -1047,6 +1111,44 @@ export class Sim {
   }
 
   /**
+   * A knocked-out colony leaves the board: its column scatters, its pads go
+   * quiet and its walls crumble.
+   *
+   * Leaving them there is not neutral. Its ants keep walking into a neighbour's
+   * nest and its pads keep shooting whoever passes, so a colony that can no
+   * longer win goes on choosing who does — kingmaking by a player who is not
+   * even at the table any more. It also makes the herd unclaimable, since the
+   * tug can sit parked on a colony that no longer has anything to hold it with.
+   */
+  _scatter(team) {
+    for (let i = this.units.length - 1; i >= 0; i--) {
+      const u = this.units[i];
+      if (u.team !== team) continue;
+      this.fx.push([FX.POP, Math.round(u.x), Math.round(u.y), u.t]);
+      this.units.splice(i, 1);
+    }
+    for (let i = this.defs.length - 1; i >= 0; i--) {
+      const d = this.defs[i];
+      if (d.team !== team) continue;
+      this.fx.push([FX.BLAST, Math.round(d.x), Math.round(d.y), 34]);
+      this.defs.splice(i, 1);
+    }
+    for (let i = this.walls.length - 1; i >= 0; i--) {
+      if (this.walls[i].team === team) this.walls.splice(i, 1);
+    }
+    this._recomputeAuras();
+    // and it lets go of the herd rather than holding it from beyond the grave
+    if (this.foodLead === team) {
+      this.foodLead = -1;
+      this.foodHold = 0;
+      if (this.foodOwner !== -1) {
+        this.foodOwner = -1;
+        this.fx.push([FX.CLAIM, Math.round(this.map.food.x), Math.round(this.map.food.y), -1]);
+      }
+    }
+  }
+
+  /**
    * A colony whose nest has fallen is out, and the last one standing wins.
    *
    * With two colonies this is the old rule word for word. With more, a colony
@@ -1054,11 +1156,13 @@ export class Sim {
    * whole shape of a free-for-all.
    */
   _checkEnd() {
-    let standing = [];
+    const standing = [];
+    const justFell = [];
     for (let t = 0; t < this.teamCount; t++) {
       if (this.nestHp[t] > 0) { standing.push(t); continue; }
       if (!this.out[t]) {
         this.out[t] = true;
+        justFell.push(t);
         const n = this.map.nests[t];
         this.fx.push([FX.FALL, Math.round(n.x), Math.round(n.y), t]);
       }
@@ -1081,6 +1185,10 @@ export class Sim {
       this.endReason = 'every nest fell at once, the closest call there is';
       return;
     }
+    // The match carries on without them, so they come off the board. This can
+    // only be reached with three colonies or more: in a duel a nest falling has
+    // already returned above, which is why no duelling number moves.
+    for (const t of justFell) this._scatter(t);
     if (this.t >= TUNING.matchCap) {
       this.over = true;
       let best = -1, bestHp = -Infinity, tied = false;
@@ -1104,7 +1212,15 @@ export class Sim {
       u: this.units.map((u) => [
         u.id, u.t, u.team, u.lane, Math.round(u.d * 10) / 10, Math.round(u.hp),
         (u.slowT > 0 ? 1 : 0) | (this.rallies[u.team][u.lane] > this.t ? 2 : 0)
-          | (u.atk > 0 ? 4 : 0) | (u.ons > this.t ? 8 : 0),
+          | (u.atk > 0 ? 4 : 0) | (u.ons > this.t ? 8 : 0)
+          // WHICH WAY IT IS FACING. The client used to work this out as
+          // `team === 0 ? forwards : backwards`, which is only true when there
+          // are two colonies: on a ring, one colony walks out down two roads and
+          // back down two others, so half its ants were drawn moonwalking. A
+          // raider walking through a fallen colony's nest can also end up on a
+          // road that touches neither it nor anyone it started next to, and then
+          // there is nothing on the wire to derive a heading from at all.
+          | (u.dir < 0 ? 16 : 0),
         u.off,
         u.lv,     // queens only; 0 on an ordinary raider
       ]),

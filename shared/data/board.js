@@ -60,9 +60,36 @@ export const TUNING = {
   // gets more than a lone player but nowhere near double, and the budget is
   // still PER PLAYER so a greedy team-mate cannot starve the other one.
   teamCapMul: 0.68,
+  // ...and the same argument again, one level out. Two a side is four purses
+  // feeding one board; a six-colony free-for-all is SIX, and it measured a peak
+  // of 219 ants where a duel peaks at 57. A ring board is 1280x860 against a
+  // duelling board's 960x640, so it can carry more, but not four times more.
+  // This is a whole-board budget shared between the colonies rather than a
+  // per-player number, with a floor so that a six-way still gets a real column
+  // each: at the floor a colony fields about what a duelling colony actually
+  // puts on the board (57 between two), which is the point.
+  // Two colonies never reach it, so no duel, pair or co-op number moves.
+  boardUnits: 150,
+  boardUnitsFloor: 28,
   // sudden death: from 8:00 both nests bleed, so nobody turtles forever
   suddenDeathAt: 480,
   suddenDeathDps: 2,
+  // A FREE-FOR-ALL IS A SEQUENCE OF ELIMINATIONS, not one fight, so 8:00 stopped
+  // being a backstop and became part of the match: on a ring of six, every match
+  // measured ran past it and it was the clock, not a raid, that finished them.
+  // Brought forward and made a little sharper it goes back to being a backstop
+  // that squeezes the tail rather than deciding it. Measured across 12 matches
+  // on each ring size:
+  //   480s at 2/s   6.4 to 8.6 min   knocked-out player waits 79 to 169s
+  //   360s at 3/s   5.8 to 6.6 min   waits 61 to 91s
+  //   300s at 4/s   5.1 to 5.5 min   waits 38 to 52s
+  // The last one hits the duelling board's 4 to 5 minutes and is still the wrong
+  // answer: the share of all nest damage done by the bleed rather than by a raid
+  // goes 11% -> 16% -> 21% on six colonies, and at a fifth of the killing the
+  // clock has started playing. 3/s takes 110s to empty a full nest, which is
+  // long enough that a healthy colony still has to be raided down.
+  ffaSuddenDeathAt: 360,
+  ffaSuddenDeathDps: 3,
   matchCap: 720,
   // a raider that walks into a friendly's back slows to its pace instead of
   // stacking on top of it — this is what makes a push look like a column
@@ -70,6 +97,15 @@ export const TUNING = {
   // AI colony income handicaps
   aiIncomeMul: { easy: 0.85, normal: 1.0, hard: 1.25, coop: 1.7 },
 };
+
+/**
+ * When the nests start bleeding, and how fast. Two colonies keep the number the
+ * duelling boards were tuned against; three or more play a different shape of
+ * match and get their own.
+ */
+export const suddenDeathFor = (teams) => (teams > 2
+  ? { at: TUNING.ffaSuddenDeathAt, dps: TUNING.ffaSuddenDeathDps }
+  : { at: TUNING.suddenDeathAt, dps: TUNING.suddenDeathDps });
 
 /**
  * Pheromone trails. Real ants lay a trail and the good trails get reinforced by

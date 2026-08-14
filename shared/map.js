@@ -118,6 +118,37 @@ export function buildMap(id = DEFAULT_MAP) {
       return lanes.filter((l) => l.ends.includes(team)).map((l) => l.id);
     },
 
+    /**
+     * The road that carries on out of `at`, away from where this one came from.
+     * Null when there is nowhere to carry on to.
+     *
+     * This is what a raider does when the nest at the end of its road is already
+     * rubble: it walks through the ruins and out the other side. Without it a
+     * ring comes APART as colonies fall, because roads only ever joined
+     * neighbours: knock out the two colonies either side of somebody and they
+     * can no longer reach anyone, and nobody can reach them. Measured on a ring
+     * of six, that happened in 8 matches out of 12 and the marooned colony won 4
+     * of them, having spent the endgame unable to fight at all.
+     *
+     * The continuing road keeps its place in the pair, so the inner road runs on
+     * into the inner one. That is a rotational invariant, which is what keeps a
+     * ring board fair while it is being taken apart.
+     *
+     * On a duelling board every road touches both colonies, so there is never a
+     * road that leads onward and this always returns null.
+     */
+    onwardFrom(lane, at) {
+      const came = lanes[lane];
+      const from = came.ends[0] === at ? came.ends[1] : came.ends[0];
+      const mine = lanes.filter((l) => l.ends.includes(at));
+      const back = mine.filter((l) => l.ends.includes(from));
+      const on = mine.filter((l) => !l.ends.includes(from));
+      if (!on.length) return null;
+      const slot = Math.max(0, back.indexOf(came));
+      const next = on[slot % on.length];
+      return { lane: next.id, dir: next.ends[0] === at ? 1 : -1 };
+    },
+
     /** World position and heading at distance `d` along a lane. */
     laneAt(lane, d, out = { x: 0, y: 0, angle: 0, seg: 0 }, hint = 0) {
       const p = lanes[lane].path;

@@ -33,7 +33,9 @@ export function buildView(map, cur, prev, a = 1) {
     const p0 = byId.get(id);
     // only blend a unit that existed last snapshot and stayed in its lane
     const dd = p0 && p0[3] === lane ? lerp(p0[4], d, a) : d;
-    const pos = place(map, lane, dd, off, team === 0 ? 1 : -1);
+    // bit 16 of the flags is which way it is walking. It used to be guessed from
+    // the colony number, which only works while there are two of them.
+    const pos = place(map, lane, dd, off, flags & 16 ? -1 : 1);
     // a negative type is a queen, and which one. Her max health moves with her
     // level, so it is recomputed here rather than looked up from a fixed table.
     if (t < 0) {

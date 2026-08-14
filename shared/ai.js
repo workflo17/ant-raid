@@ -4,8 +4,10 @@
 // tuning harness in test/.
 
 import { distToPath, dist, mulberry32 } from './util.js';
-import { RAIDERS, DEFENDERS, POWERS, RAIDER_IDS, LOADOUT_SIZE, CASTES, CASTE_TIERS } from './data/units.js';
-import { FOOD, PHEROMONE } from './data/board.js';
+import {
+  RAIDERS, DEFENDERS, POWERS, RAIDER_IDS, DEFENDER_IDS, LOADOUT_SIZE, CASTES, CASTE_TIERS,
+} from './data/units.js';
+import { PHEROMONE } from './data/board.js';
 import { HERO, QUEENS, QUEEN_IDS } from './data/heroes.js';
 
 // `eco` is how long the bot keeps buying cheap raiders purely to grow income
@@ -20,6 +22,10 @@ const LEVELS = {
 
 // Opening build order, then it improvises. Cheap wall first, teeth second.
 const OPENING = ['worker', 'trapjaw', 'honeypot', 'weaver', 'archer', 'beacon'];
+
+// Every duelling board has three roads, and `maxDefs` above is how many pads
+// each difficulty wants when it is holding three. A ring colony holds four.
+const DUEL_ROADS = 3;
 
 /**
  * A roster the bot can actually play: something cheap to eco with, a body to
@@ -58,9 +64,42 @@ export class AiBrain {
     // whichever is updated second always decides with the other's move already
     // on the board. That single free look was worth 11 wins in 14.
     this.acc = this.rand() * this.level.think;
-    this.pushLane = 1;
     this.pushUntil = 0;
     this.built = 0;
+    // ONLY THE ROADS THAT RUN FROM ITS OWN NEST. On a duelling board that is
+    // every lane, so nothing about a duel changes; on a ring it is four of ten
+    // and the other six belong to arguments it is not part of. Every decision
+    // below is made over THIS list rather than over the whole board, because
+    // scoring a road you cannot walk down is how a bot picks a lane it will then
+    // be refused. The list cannot change during a match: the board is fixed and
+    // so is the colony a brain plays.
+    // IN ITS OWN FRAME, not in board order. Every tie below breaks toward the
+    // front of this list, and lane ids run round the ring rather than out from
+    // any one nest, so ordering by id gave each colony a different favourite
+    // direction: on a ring of four, colonies 0, 1 and 2 all opened toward the
+    // same two nests and colony 3 opened toward nobody at all. It won six
+    // matches in eight, on a board that is provably rotationally fair, purely
+    // because the bot read the board in board order.
+    //
+    // Sorted by which way it walks the road (out toward the next colony round
+    // first, then back toward the previous), every colony now sees the same
+    // list from where it stands. On a duelling board every road runs the same
+    // way for a given colony, so this leaves [0, 1, 2] exactly as it was.
+    this.team = this.me?.team ?? 0;
+    this.myLanes = this.map.lanesFor(this.team)
+      .sort((a, b) => this.dirOn(b) - this.dirOn(a) || a - b);
+    // The road it leans on until something gives it a reason to switch. Its
+    // second one, which on a duelling board is the short middle lane it has
+    // always opened on.
+    this.pushLane = this.myLanes[Math.min(1, this.myLanes.length - 1)] ?? 0;
+    // ONE PAD PER ROAD, which is what a duel already gives it: three roads in,
+    // three defenders at `normal`. A ring colony has FOUR roads arriving at its
+    // nest and was still building three, so a quarter of its front door had
+    // nothing pointed at it and the breach rate ran at 42% where a duel runs at
+    // 32%. Scaled off the duelling board's three rather than hard-coded, so the
+    // easy and hard appetites keep their shape, and never more pads than it owns.
+    this.maxDefs = Math.min(this.me?.padIdx.length ?? this.level.maxDefs,
+      Math.round((this.level.maxDefs * this.myLanes.length) / DUEL_ROADS));
   }
 
   get me() { return this.sim.playerById(this.id); }
@@ -68,6 +107,10 @@ export class AiBrain {
   has(k) { return this.me?.roster.includes(k); }
   get map() { return this.sim.map; }
   get lanes() { return this.sim.map.lanes.length; }
+  /** Which way this colony walks down a road: +1, -1, or 0 if it is not on it. */
+  dirOn(lane) { return this.map.laneSideFor(lane, this.team); }
+  /** Whose nest is at the far end of one of its own roads. Replaces `1 - me.team`. */
+  foeOn(lane) { return this.map.laneFoe(lane, this.dirOn(lane)); }
 
   update(dt) {
     if (this.sim.over) return;
@@ -76,6 +119,10 @@ export class AiBrain {
     this.acc = 0;
     const me = this.me;
     if (!me) return;
+    // One read of every colony's guns per think, because a ring bot has to ask
+    // about two different neighbours' pads and the old code rebuilt the whole
+    // table for each question.
+    this.cov = this._coverageAll();
     this._defend(me);
     this._cast(me);
     this._buyCaste(me);
@@ -166,31 +213,49 @@ export class AiBrain {
   }
 
   // ---- how much enemy is standing in each of my lanes right now
+  //
+  // Roads that do not touch this colony are skipped rather than scored. Only two
+  // colonies can ever stand on one of ITS roads, so on its own lanes "not mine"
+  // still means exactly one neighbour, the same as it always did in a duel.
   _pressure(team) {
     const p = new Array(this.lanes).fill(0);
-    for (const u of this.sim.units) if (u.team !== team) p[u.lane] += u.hp;
+    for (const u of this.sim.units) {
+      if (u.team === team || !this.map.lanes[u.lane].ends.includes(team)) continue;
+      p[u.lane] += u.hp;
+    }
     return p;
   }
 
-  // ---- which pads still cover a lane for a given team
-  _coverage(team) {
-    const cov = new Array(this.lanes).fill(0);
+  /**
+   * Gun pointed at every road by every colony: cov[team][lane].
+   *
+   * It used to be built one colony at a time, which was fine when there was only
+   * ever one other colony to ask about. On a ring a bot's four roads run to TWO
+   * different neighbours, so the question is per road, not per enemy.
+   */
+  _coverageAll() {
+    const cov = Array.from({ length: this.sim.teamCount }, () => new Array(this.lanes).fill(0));
     for (const d of this.sim.defs) {
-      if (d.team !== team) continue;
-      const def = DEFENDERS[Object.keys(DEFENDERS)[d.t]];
+      const def = DEFENDERS[DEFENDER_IDS[d.t]];
       if (!def.damage && !def.blast) continue;
       for (let l = 0; l < this.lanes; l++) {
         if (distToPath(this.map.lanes[l].path, d.x, d.y) < def.range * d.auraRange) {
-          cov[l] += (def.damage || def.blast?.damage || 0) / (def.cooldown || 1);
+          cov[d.team][l] += (def.damage || def.blast?.damage || 0) / (def.cooldown || 1);
         }
       }
     }
     return cov;
   }
 
+  /** This think's table, built once in update(). */
+  _coverage(team) {
+    return (this.cov || (this.cov = this._coverageAll()))[team]
+      || new Array(this.lanes).fill(0);
+  }
+
   _defend(me) {
     const mine = this.sim.defs.filter((d) => d.team === me.team);
-    if (mine.length >= this.level.maxDefs) return;
+    if (mine.length >= this.maxDefs) return;
 
     // pick what to build: follow the opening, but answer real pressure first
     const have = new Set(mine.map((d) => Object.keys(DEFENDERS)[d.t]));
@@ -199,9 +264,10 @@ export class AiBrain {
 
     const pressure = this._pressure(me.team);
     const cov = this._coverage(me.team);
-    // the lane with the most incoming and the least answer gets the next pad
-    let bestLane = 0, bestScore = -Infinity;
-    for (let l = 0; l < this.lanes; l++) {
+    // the lane with the most incoming and the least answer gets the next pad,
+    // out of the roads that actually arrive at this nest
+    let bestLane = this.myLanes[0] ?? 0, bestScore = -Infinity;
+    for (const l of this.myLanes) {
       const s = pressure[l] * 2 + 40 - cov[l] * 6;
       if (s > bestScore) { bestScore = s; bestLane = l; }
     }
@@ -227,14 +293,19 @@ export class AiBrain {
     for (const key of this.level.powers) {
       if (me.powerCd[key] > 0 || me.sugar < POWERS[key].cost + 80) continue;
 
+      // WHICH HALF OF A ROAD IS MINE depends on which end I walk in from, not on
+      // my colony number. `me.team === 0 ? near : far` was the same statement in
+      // a duel, where colony 0 always starts at zero and colony 1 always starts
+      // at the far end; on a ring one colony does both, on different roads.
       if (key === 'acidrain') {
         // rain on whichever lane has the fattest enemy stack in my half
         let best = -1, bestN = 0;
-        for (let l = 0; l < this.lanes; l++) {
+        for (const l of this.myLanes) {
+          const L = this.map.laneLen[l], into = this.dirOn(l);
           let n = 0;
           for (const u of this.sim.units) {
             if (u.team === me.team || u.lane !== l) continue;
-            const half = me.team === 0 ? u.d < this.map.laneLen[l] * 0.55 : u.d > this.map.laneLen[l] * 0.45;
+            const half = into > 0 ? u.d < L * 0.55 : u.d > L * 0.45;
             if (half) n++;
           }
           if (n > bestN) { bestN = n; best = l; }
@@ -244,11 +315,12 @@ export class AiBrain {
       } else if (key === 'rally') {
         // push the lane where my own column is deepest into their half
         let best = -1, bestN = 0;
-        for (let l = 0; l < this.lanes; l++) {
+        for (const l of this.myLanes) {
+          const L = this.map.laneLen[l], into = this.dirOn(l);
           let n = 0;
           for (const u of this.sim.units) {
             if (u.team !== me.team || u.lane !== l) continue;
-            const deep = me.team === 0 ? u.d > this.map.laneLen[l] * 0.45 : u.d < this.map.laneLen[l] * 0.55;
+            const deep = into > 0 ? u.d > L * 0.45 : u.d < L * 0.55;
             if (deep) n++;
           }
           if (n > bestN) { bestN = n; best = l; }
@@ -257,7 +329,8 @@ export class AiBrain {
 
       } else if (key === 'barricade') {
         const pressure = this._pressure(me.team);
-        const worst = pressure.indexOf(Math.max(...pressure));
+        let worst = this.myLanes[0] ?? 0;
+        for (const l of this.myLanes) if (pressure[l] > pressure[worst]) worst = l;
         const hasWall = this.sim.walls.some((w) => w.team === me.team && w.lane === worst);
         if (!hasWall && pressure[worst] > 180) this.cmd({ kind: 'power', power: 'barricade', lane: worst });
       }
@@ -288,8 +361,9 @@ export class AiBrain {
       }
       return;
     }
-    // if the herd is being taken off it, push through the herd instead
-    this.pushLane = (this.sim.foodOwner === 1 - me.team)
+    // if the herd is being taken off it, push through the herd instead. Anybody
+    // else holding it counts, not just the one other colony there used to be.
+    this.pushLane = (this.sim.foodOwner >= 0 && this.sim.foodOwner !== me.team)
       ? this._foodLane()
       : this._weakestLane(me);
     this.pushUntil = this.sim.t + 6;
@@ -301,28 +375,68 @@ export class AiBrain {
    * as much as a Honeypot, so the bot will not simply ignore it.
    */
   _foodLane() {
-    let best = 0, bestD = Infinity;
-    for (let l = 0; l < this.lanes; l++) {
-      const path = this.map.lanes[l].path;
-      const d = distToPath(path, FOOD.x, FOOD.y);
-      if (d < bestD) { bestD = d; best = l; }
+    // The herd belongs to the MAP. It used to be read out of the tuning file as
+    // a fixed (480, 320), which was the middle of the world back when every
+    // board was 960x640 and is 190px off the middle of a ring board — so the bot
+    // was walking toward the wrong patch of ground to contest it.
+    const F = this.map.food;
+    let best = this.myLanes[0] ?? 0, bestD = Infinity;
+    for (const l of this.myLanes) {
+      const d = distToPath(this.map.lanes[l].path, F.x, F.y);
+      // A TOLERANCE, BECAUSE THE TIE IS EXACT AND THE ARITHMETIC IS NOT.
+      //
+      // A ring board is one wedge rotated n times, so a colony's road out and
+      // its road back are the SAME distance from the herd in the middle: 142.0
+      // both, on every board and for every colony. Rotated through an irrational
+      // angle they come out equal to about a part in 1e13, and a bare `<` hands
+      // that last bit the decision. It decided differently for different seats,
+      // and this is the road a colony commits its whole push to whenever
+      // somebody else is holding the herd: on a ring of five, colony 2 alone
+      // read its BACKWARD road as the nearer one, spent the match pushing the
+      // wrong way round the ring, and handed colony 3 an unattacked flank. That
+      // one flipped bit was worth 84 wins in 200 on a board that is provably
+      // rotationally fair, and it is why ring4 measured flat while 3, 5 and 6
+      // did not: on four colonies nothing happened to land the wrong side.
+      //
+      // Anything closer than a micron is the same distance. Ties then fall to
+      // the front of myLanes, which every colony reads from where it stands.
+      // On a duelling board the middle lane runs THROUGH the herd and the outer
+      // two are 190px further off, so no tolerance is ever in play.
+      if (d < bestD - 1e-6) { bestD = d; best = l; }
     }
     return best;
   }
 
-  /** The enemy lane with the least gun pointed at it and the least traffic. */
+  /**
+   * The road out with the least gun pointed at it and the least traffic on it.
+   *
+   * Scored per ROAD rather than per enemy: each of its roads ends at a different
+   * neighbour's nest, so "how well defended is the enemy" is not one number any
+   * more. Traffic is the same measurement as pressure, because the only colony
+   * that can put ants on one of its roads is the one at the other end of it.
+   */
   _weakestLane(me) {
-    const foe = 1 - me.team;
-    const cov = this._coverage(foe);
-    const traffic = new Array(this.lanes).fill(0);
-    for (const u of this.sim.units) if (u.team === foe) traffic[u.lane] += u.hp;
-    let best = (this.lanes / 2) | 0, bestScore = Infinity;
-    for (let l = 0; l < this.lanes; l++) {
+    const traffic = this._pressure(me.team);
+    let bestScore = Infinity;
+    let tied = [];
+    for (const l of this.myLanes) {
+      const foe = this.foeOn(l);
       const wall = this.sim.walls.some((w) => w.team === foe && w.lane === l) ? 90 : 0;
-      const s = cov[l] * 8 + traffic[l] * 0.6 + wall;
-      if (s < bestScore) { bestScore = s; best = l; }
+      const s = this._coverage(foe)[l] * 8 + traffic[l] * 0.6 + wall;
+      if (s < bestScore) { bestScore = s; tied = [l]; }
+      else if (s === bestScore) tied.push(l);
     }
-    return best;
+    if (tied.length < 2) return tied[0] ?? this.myLanes[0] ?? 0;
+    // AN EXACT TIE ACROSS TWO DIFFERENT NEIGHBOURS is a choice of victim, not a
+    // choice of road, and it is not a rare one: an empty board scores every road
+    // at zero, so this is what picks the opening for the whole eco phase. Always
+    // taking the first one turns the ring into a carousel where everybody chases
+    // the colony on the same side of them. Where the tied roads all end at the
+    // same nest — which is every tie there has ever been in a duel — nothing is
+    // drawn and nothing changes.
+    const foes = new Set(tied.map((l) => this.foeOn(l)));
+    if (foes.size < 2) return tied[0];
+    return tied[Math.floor(this.rand() * tied.length) % tied.length];
   }
 
   /**
@@ -333,8 +447,7 @@ export class AiBrain {
    */
   _sendNext(me) {
     const lane = this.pushLane;
-    const foe = 1 - me.team;
-    const cov = this._coverage(foe)[lane];
+    const cov = this._coverage(this.foeOn(lane))[lane];
     const mine = this.sim.units.filter((u) => u.team === me.team && u.lane === lane);
     const roles = { front: 0, gun: 0, chaff: 0 };
     for (const u of mine) {

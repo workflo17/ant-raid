@@ -12,6 +12,7 @@
     "dev": "node tools/dev.mjs",
     "test": "node --test \"test/**/*.test.js\"",
     "balance": "node tools/balance.js",
+    "ffa": "node tools/ffa.js",
     "mapcheck": "node tools/mapcheck.js",
     "netcheck": "node tools/netcheck.js"
   },
