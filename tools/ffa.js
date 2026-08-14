@@ -135,13 +135,32 @@ console.log('\n=== PROBE: does the harness itself lean? ===');
 console.log('  A CROSSED design: every seed is played once from every rotation of the');
 console.log('  ring, so the seat a colony sits in and the brain sitting in it are');
 console.log('  balanced against each other rather than confounded. Playing each seed');
-console.log('  once at some rotation does NOT do this, and reads as a seat effect.');
-console.log('  Chi-squared under about 11 on 5 degrees of freedom is flat.\n');
+console.log('  once at some rotation does NOT do this, and reads as a seat effect.\n');
 
 const chi2 = (wins, total) => {
   const e = total / wins.length;
   return e ? wins.reduce((a, v) => a + (v - e) ** 2 / e, 0) : 0;
 };
+
+/** Chi-squared at 5 per cent, for 2 to 5 degrees of freedom. */
+const CRITICAL = { 2: 5.99, 3: 7.81, 4: 9.49, 5: 11.07 };
+
+/**
+ * Say what the number MEANS, and refuse to say it when the run is too small.
+ *
+ * A short run overstates. This board measured chi-squared 6.7 by seat over 72
+ * matches and 2.3 over 600, on the same code: the first reading is noise wearing
+ * the clothes of a finding, and acting on it would mean hunting a seat bias that
+ * is not there. 30 matches per seat is where it settles down. The order probe in
+ * tools/coop.js learned the same lesson the same way, and a guard that cries
+ * wolf is worse than no guard because it gets ignored.
+ */
+function verdict(value, df, decided) {
+  const perSeat = decided / (df + 1);
+  if (perSeat < 30) return `too few to judge, ${perSeat.toFixed(0)} per seat, want 30`;
+  const crit = CRITICAL[df] ?? 11.07;
+  return value <= crit ? `flat (under ${crit})` : `LEANS, over ${crit} at 5 per cent`;
+}
 
 for (const n of SIZES) {
   const bySeat = new Array(n).fill(0), byBrain = new Array(n).fill(0);
@@ -155,9 +174,10 @@ for (const n of SIZES) {
       byBrain[r.winnerBrain]++;
     }
   }
+  const seatChi = chi2(bySeat, decided), brainChi = chi2(byBrain, decided);
   console.log(`  ring${n}   ${N} seeds x ${n} rotations = ${N * n} matches, flat is ${(decided / n).toFixed(1)} each`);
-  console.log(`    by seat   ${bySeat.join(' / ')}   chi2 ${chi2(bySeat, decided).toFixed(1)} on ${n - 1} df`);
-  console.log(`    by brain  ${byBrain.join(' / ')}   chi2 ${chi2(byBrain, decided).toFixed(1)} on ${n - 1} df`);
+  console.log(`    by seat   ${bySeat.join(' / ')}   chi2 ${seatChi.toFixed(1)} on ${n - 1} df   ${verdict(seatChi, n - 1, decided)}`);
+  console.log(`    by brain  ${byBrain.join(' / ')}   chi2 ${brainChi.toFixed(1)} on ${n - 1} df   ${verdict(brainChi, n - 1, decided)}`);
 
   // Update order: whoever is stepped last in a tick decides with everybody
   // else's move already on the board. Three orders, same seeds; if they disagree
