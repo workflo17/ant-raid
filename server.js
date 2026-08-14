@@ -460,7 +460,12 @@ setInterval(() => {
   }
 }, 60_000);
 
-server.listen(PORT, () => {
+// Bind 0.0.0.0 explicitly. `listen(PORT)` with no host binds `::`, which is
+// fine on a dev machine but is exactly what Render's docs tell you not to do:
+// their port detection and health checks reach the container over IPv4, and an
+// IPv6-only listener makes an instance intermittently unreachable rather than
+// cleanly broken.
+server.listen(PORT, '0.0.0.0', () => {
   const pub = publicUrl();
   console.log(`Ant Raid on http://localhost:${PORT}`);
   if (DEV_SHOTS) console.log('  dev screenshot sink ON (AR_DEV_SHOTS=1) — do not use this while sharing');
