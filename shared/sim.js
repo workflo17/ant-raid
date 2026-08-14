@@ -841,8 +841,15 @@ export class Sim {
         // side and on to whoever is still standing beyond it. This is what stops
         // a ring from falling into disconnected pieces as colonies drop out, and
         // it cannot fire in a duel, where there is no road that leads onward.
+        // NEVER YOUR OWN NEST. This sat one line lower, inside the ruins branch,
+        // where it guarded nothing: an ant can only arrive at its own door by
+        // walking the whole ring through other colonies' ruins, and its own
+        // colony is by definition the one still standing, so `out[foe]` was
+        // false and it fell straight through to the bite below. Written by hand
+        // into that state, a colony chewed its own nest down.
+        if (foe === u.team) { u.hp = 0; continue; }
         if (this.out[foe]) {
-          const on = foe === u.team ? null : this.map.onwardFrom(u.lane, foe);
+          const on = this.map.onwardFrom(u.lane, foe);
           if (on) through.push([u, on]);
           else u.hp = 0;      // nowhere left to walk
           continue;
@@ -1263,8 +1270,27 @@ export class Sim {
     return s;
   }
 
-  /** Everything a joining or reconnecting client needs before snapshots make sense. */
+  /**
+   * Everything a joining or reconnecting client needs before snapshots make
+   * sense.
+   *
+   * IT MUST NOT DRAIN THE EFFECTS BUFFER. This calls snapshot(), and snapshot()
+   * hands over this.fx and empties it, so a client arriving mid-match used to
+   * take that frame's effects with it and every client already at the table
+   * never saw them. Both halves of that are wrong: the joiner is replayed bangs
+   * from a moment it was not present for, and everyone else silently loses
+   * them. It is worst exactly when it is most visible, since a colony
+   * scattering pushes one POP per ant and one BLAST per pad into a single
+   * frame, and a forfeit is precisely when somebody is reconnecting.
+   *
+   * So the buffer is set aside, the snapshot is taken empty, and the pending
+   * effects are put back for the next broadcast to deliver to everybody.
+   */
   fullState() {
+    const pending = this.fx;
+    this.fx = [];
+    const snap = this.snapshot();
+    this.fx = pending;
     return {
       mode: this.mode,
       map: this.map.id,
@@ -1276,7 +1302,7 @@ export class Sim {
         i: p.index, id: p.id, name: p.name, team: p.team, bot: p.bot,
         pads: p.padIdx, roster: p.roster, queen: p.queen, color: p.color,
       })),
-      snap: this.snapshot(),
+      snap,
     };
   }
 }

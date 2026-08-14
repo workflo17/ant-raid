@@ -843,6 +843,136 @@ test('a raid walks through a fallen nest and out the far side', () => {
   assert.equal(buildMap(DEFAULT_MAP).onwardFrom(0, 1), null);
 });
 
+/**
+ * The interactions between _scatter and the pass-through rule, which were
+ * reasoned about when they were written and not proved. Each of these is an
+ * attempt to break them rather than a demonstration that they work.
+ */
+
+test('a colony knocked out while its queen is mid-recall takes her with it', () => {
+  const sim = ring(4);
+  const roads = sim.map.lanesFor(1);
+  assert.equal(sim.command('P1', { kind: 'queen', lane: roads[0] }).ok, true);
+  sim.step(DT);
+  const q = sim.heroOf(1);
+  assert.ok(q, 'she never walked out');
+
+  // recall her onto another road: lane, dir, d and seg are all rewritten and a
+  // move cooldown is set, so she is the most mutable thing on the board
+  sim.players[1].heroMoveCd = 0;
+  assert.equal(sim.command('P1', { kind: 'queen', lane: roads[2] }).ok, true);
+  assert.equal(sim.players[1].heroMoveCd > 0, true, 'the recall did not take');
+
+  sim.nestHp[1] = 0;
+  sim.step(DT);
+  assert.equal(sim.out[1], true);
+  assert.equal(sim.heroOf(1), null, 'she survived her own colony');
+  assert.equal(sim.units.some((u) => u.team === 1), false);
+  // and the match carries on for everybody else without her leaving a hole
+  assert.equal(sim.over, false);
+  sim.step(DT);
+  assert.equal(sim.over, false);
+});
+
+test('a raider passes through one ruin after another until it finds somebody', () => {
+  const n = 5;
+  const sim = ring(n);
+  // knock out two colonies IN A ROW, so the road out of the first ruin leads
+  // straight into a second one
+  sim.nestHp[1] = 0;
+  sim.nestHp[2] = 0;
+  sim.step(DT);
+  assert.equal(sim.out[1] && sim.out[2], true);
+  assert.equal(sim.over, false, 'three of five still standing');
+
+  const first = sim.map.lanesFor(0).find((l) => sim.map.lanes[l].ends.includes(1));
+  sim.command('P0', { kind: 'send', unit: 'trapjaw', lane: first });
+  const ant = sim.units.find((u) => u.team === 0);
+  const seen = [ant.lane];
+  // walk it to each ruin in turn rather than waiting out the whole road
+  for (let hop = 0; hop < 4; hop++) {
+    ant.d = ant.dir > 0 ? sim.map.laneLen[ant.lane] : 0;
+    const hpBefore = [...sim.nestHp];
+    sim.step(DT);
+    if (ant.hp <= 0) break;
+    if (ant.lane !== seen[seen.length - 1]) seen.push(ant.lane);
+    // nothing may be bitten on the way through
+    if (sim.map.lanes[ant.lane].ends.some((e) => sim.out[e])) {
+      assert.deepEqual(sim.nestHp, hpBefore, 'walking through a ruin damaged a nest');
+    }
+  }
+  assert.ok(seen.length >= 3, `it stopped after ${seen.length} roads: ${seen.join(' -> ')}`);
+  // it must end up somewhere that touches a colony still standing
+  const reached = sim.map.lanes[seen[seen.length - 1]].ends.find((e) => !sim.out[e] && e !== 0);
+  assert.ok(reached !== undefined, `last road ${seen[seen.length - 1]} reaches nobody alive`);
+});
+
+test('two nests falling in the same tick both leave the board', () => {
+  const sim = ring(4);
+  for (const t of [1, 2]) {
+    sim.command(`P${t}`, { kind: 'send', unit: 'worker', lane: sim.map.lanesFor(t)[0] });
+    sim.command(`P${t}`, { kind: 'build', def: 'worker', pad: 0 });
+  }
+  sim.step(DT);
+  assert.ok(sim.units.some((u) => u.team === 1) && sim.units.some((u) => u.team === 2));
+
+  sim.nestHp[1] = 0;
+  sim.nestHp[2] = 0;
+  sim.step(DT);
+  assert.equal(sim.over, false, 'two of four falling together ended it early');
+  for (const t of [1, 2]) {
+    assert.equal(sim.out[t], true, `colony ${t} was not flagged out`);
+    assert.equal(sim.units.some((u) => u.team === t), false, `colony ${t} kept its ants`);
+    assert.equal(sim.defs.some((d) => d.team === t), false, `colony ${t} kept its pads`);
+  }
+  // and with three colonies, two falling together IS the end
+  const three = ring(3);
+  three.nestHp[1] = 0;
+  three.nestHp[2] = 0;
+  three.step(DT);
+  assert.equal(three.over, true);
+  assert.equal(three.winner, 0);
+});
+
+test('a raider never bites its own nest, however far round it has walked', () => {
+  const sim = ring(4);
+  // the pathological state the pass-through guard exists for: an ant of colony 0
+  // walking the last road INTO colony 0. It cannot be reached by playing, since
+  // getting there means every other colony is out and the match is over, so it
+  // is built by hand.
+  const home = sim.map.lanes.find((l) => l.ends[1] === 0 && l.ends[0] !== 0);
+  assert.ok(home, 'no road ends at colony 0');
+  sim.command('P0', { kind: 'send', unit: 'trapjaw', lane: sim.map.lanesFor(0)[0] });
+  const ant = sim.units.find((u) => u.team === 0);
+  ant.lane = home.id;
+  ant.dir = 1;
+  ant.d = sim.map.laneLen[home.id];
+  const before = [...sim.nestHp];
+  sim.step(DT);
+  assert.deepEqual(sim.nestHp.map(Math.round), before.map(Math.round), 'it bit its own nest');
+  assert.equal(sim.over, false);
+});
+
+test('a client joining mid-match does not eat everybody else\'s effects', () => {
+  const sim = ring(3);
+  sim.command('P0', { kind: 'send', unit: 'worker', lane: sim.map.lanesFor(0)[0] });
+  sim.step(DT);
+  const pending = sim.fx.length;
+  assert.ok(pending > 0, 'nothing had happened to observe');
+
+  // somebody reconnects: fullState() used to call snapshot(), which DRAINS fx,
+  // so the frame's effects went to the one client that was not there to see
+  // them and every other client never got them at all. Worst exactly when it
+  // matters, since a forfeit pushes a POP per ant and a BLAST per pad.
+  const full = sim.fullState();
+  assert.deepEqual(full.snap.fx, [], 'a joining client was replayed effects from before it arrived');
+  assert.equal(sim.fx.length, pending, 'the join drained effects still owed to everybody else');
+
+  const snap = sim.snapshot();
+  assert.equal(snap.fx.length, pending, 'the next broadcast lost them');
+  assert.equal(sim.fx.length, 0, 'a normal snapshot no longer drains');
+});
+
 test('a colony can only aim a power down its own roads, and walls its own half', () => {
   const sim = ring(4);
   const mine = sim.map.lanesFor(2);
