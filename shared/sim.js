@@ -125,7 +125,8 @@ export class Sim {
       castes: {},                       // species id -> upgrade tier bought
       eco: 0,            // income bought with raids, the main way a purse grows
       powerCd: { rally: 0, acidrain: 0, barricade: 0 },
-      connected: true,
+      // defaults to true, so every caller that does not care is unaffected
+      connected: p.connected !== false,
       // the queen. She is a persistent identity rather than a purchase you
       // repeat: bought once, and after that she keeps coming back with whatever
       // levels she earned before she fell.

@@ -390,6 +390,68 @@ async function caseLobby() {
   closeAll([], host, b, c3);
 }
 
+// ------------------------------------------------- case: leaving the lobby
+
+/**
+ * Somebody closes the tab BEFORE the raid starts.
+ *
+ * The chair has to be given up, and that is the opposite of the rule one screen
+ * later: a seat that drops mid-match keeps its colony so `resume` can hand it
+ * back. Getting the two confused either way is a bug, so both are checked here
+ * and in `a colony that drops and comes back`.
+ *
+ * What this catches: `canStart` and `boardId()` both count seats.length, so a
+ * chair held by nobody used to size the board and then stand on it. Three join,
+ * one leaves, the host starts a three colony ring, and the third colony does
+ * nothing until the abandon timer knocks it out 45 seconds later.
+ */
+async function caseLobbyLeave() {
+  const host = client('host');
+  const b = client('B');
+  const c = client('C');
+  await Promise.all([host.ready, b.ready, c.ready]);
+  host.tx({ t: 'create', name: NAMES[0], mode: 'ffa' });
+  await until('the host to get a room code', () => host.code && host.lobby);
+  b.tx({ t: 'join', code: host.code, name: NAMES[1] });
+  await until('the second seat', () => host.lobby.players.length === 2);
+  c.tx({ t: 'join', code: host.code, name: NAMES[2] });
+  await until('the third seat', () => host.lobby.players.length === 3);
+  check('three seats can start', host.lobby.canStart === true);
+  const pids = host.lobby.players.map((p) => p.pid);
+
+  c.ws.close();
+  await until('the lobby to notice', () => host.lobby.players.length !== 3, 8000)
+    .catch(() => {});
+  check('the empty chair is given up, not held',
+    host.lobby.players.length === 2, `${host.lobby.players.length} seats still listed`);
+  check('and the room is no longer startable',
+    host.lobby.canStart === false, 'it would have started onto a colony nobody holds');
+
+  // and the pid it vacated must not be handed to the next arrival, or `resume`
+  // and `cmd` would address two people at once
+  const d = client('D');
+  await d.ready;
+  d.tx({ t: 'join', code: host.code, name: NAMES[3] || 'D' });
+  await until('a replacement seat', () => host.lobby.players.length === 3);
+  const now = host.lobby.players.map((p) => p.pid);
+  check('the new arrival got a pid nobody is sitting on',
+    new Set(now).size === now.length, `pids ${now.join(',')}`);
+  check('and it is not one the room has issued before',
+    !pids.includes(now.find((p) => !pids.includes(p)) ?? pids[0]) && now.some((p) => !pids.includes(p)),
+    `was ${pids.join(',')} now ${now.join(',')}`);
+
+  host.tx({ t: 'start' });
+  await until('the match to start', () => host.started || host.errors.length, 8000).catch(() => {});
+  check('a refilled room starts normally', !!host.started, host.errors.slice(-1)[0] || '');
+  if (host.full) {
+    check('onto a board sized for the people actually in it',
+      host.full.teams === 3, `teams ${host.full.teams}`);
+    check('and every colony is held by somebody',
+      host.full.snap.p.every((p) => p.on), 'a colony started already disconnected');
+  }
+  closeAll([], host, b, c, d);
+}
+
 // ----------------------------------------------------------- case: the forfeit
 
 /**
@@ -675,6 +737,7 @@ async function ffa() {
   console.log(`free-for-all check: ${SEATS} colonies${QUICK ? ', quick pass — no match played out' : ''}`);
   const cases = [
     ['the lobby mode switch', caseLobby],
+    ['a seat that leaves the lobby', caseLobbyLeave],
     ['a colony that walks out and stays out', () => caseForfeit(SEATS)],
     ['a colony that drops and comes back', () => caseReconnect(SEATS)],
   ];

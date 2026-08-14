@@ -233,6 +233,7 @@ class Room {
     // never trust a client-supplied map id straight into the sim
     this.map = MAP_IDS.includes(map) ? map : DEFAULT_MAP;
     this.seats = [];        // { pid, name, ws, connected, gone }
+    this.nextPid = 0;       // monotonic: seats can leave the lobby, see add()
     this.sim = null;
     this.brains = [];
     this.timer = null;
@@ -271,7 +272,12 @@ class Room {
   add(ws, name, roster, queen, color) {
     if (this.seats.length >= this.capacity) return null;
     const seat = {
-      pid: `p${this.seats.length}`,
+      // Counted, never derived from seats.length. A seat that walks out of the
+      // lobby is removed from the list, so the length goes back down and the
+      // next arrival would be handed a pid somebody is already sitting on:
+      // p0, p1, p2, then p1 leaves, then the next joiner is p2 as well. From
+      // there `resume` and `command` both address two people at once.
+      pid: `p${this.nextPid++}`,
       name: (name || '').slice(0, 16) || `Colony ${this.seats.length + 1}`,
       roster: cleanLoadout(roster),
       queen: cleanQueen(queen),
@@ -334,6 +340,11 @@ class Room {
     const colors = this.resolvedColors();
     const players = this.seats.map((s, i) => ({
       id: s.pid, name: s.name, team: this.teamFor(i),
+      // carried, not assumed. A seat that dropped in the instant before the
+      // start would otherwise report itself connected in every snapshot for the
+      // rest of the match, because the sim defaults the flag to true and only
+      // `ws.on('close')` ever clears it, and that has already fired by then.
+      connected: s.connected,
       roster: s.roster, queen: s.queen, color: colors[this.teamFor(i)],
     }));
     this.sim = new Sim({
@@ -498,7 +509,11 @@ wss.on('connection', (ws) => {
       case 'start': {
         if (!room) return fail(ws, 'not in a room');
         if (room.seats[0]?.ws !== ws) return fail(ws, 'only the host can start');
-        if (!room.start()) fail(ws, 'need both colonies before starting');
+        // "both" is a duel's word. A free-for-all wants three and takes six.
+        if (!room.start()) {
+          fail(ws, room.started ? 'the raid has already started'
+            : `need ${room.minSeats} colonies before starting, there are ${room.seats.length}`);
+        }
         break;
       }
 
@@ -552,8 +567,23 @@ wss.on('connection', (ws) => {
       seat.ws = null;
       seat.gone = Date.now();
       if (room.sim) {
+        // MID-MATCH: the chair is kept. Somebody who refreshes or drops out has
+        // a colony on the board, and `resume` gives it back to them; only the
+        // abandon timer may take it away.
         const p = room.sim.playerById(seat.pid);
         if (p) p.connected = false;
+      } else {
+        // IN THE LOBBY: the chair is given up. Nothing has been built yet, so
+        // there is nothing to come back to and no reason to hold a place.
+        //
+        // Keeping it was a real bug rather than a tidiness point. `canStart` and
+        // `boardId()` both read seats.length, so three people could join, one
+        // could close the tab, and the host would start a THREE colony ring with
+        // a colony nobody was holding. It stood there doing nothing until the
+        // abandon timer knocked it out 45 seconds in, on a board that had been
+        // sized for it. In a duel it was worse: the empty seat forfeited and
+        // handed the other player a win they never played for.
+        room.seats.splice(room.seats.indexOf(seat), 1);
       }
     }
     room.broadcast(room.lobbyState());
