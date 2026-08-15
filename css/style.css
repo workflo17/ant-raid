@@ -812,9 +812,20 @@ input {
 .em:hover { opacity: 1; transform: translateY(-1px); }
 .em .eg { font-size: 13px; line-height: 1; }
 @media (max-width: 760px) {
-  .emotebar { max-width: 58vw; gap: 3px; top: 58px; }
+  /* ONE thumb-height row, full width, scrolling sideways. Two rows of small
+     circles fitted the band but overlapped the board by 20px and each pill
+     was a 36px target; one 44px row fits the 62px band between the nest bar
+     and the board with room to spare, and the far pills are a flick away. */
+  .emotebar {
+    max-width: calc(100vw - 20px); gap: 5px; top: 58px;
+    flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .emotebar::-webkit-scrollbar { display: none; }
   .em .et { display: none; }
-  .em { padding: 4px 7px; }
+  .em { padding: 4px 7px; min-width: 44px; min-height: 44px; justify-content: center; flex: none; }
 }
 
 .toast {
@@ -968,13 +979,16 @@ input {
 /* ─────────────────────────── mobile touch pass ───────────────────────────
    Measured at 375x812, not guessed: the emotebar sat on top of the nest bar
    (both pinned to the top-left corner), and fifteen tap targets came in under
-   40px, the practical floor for a thumb. The band between the nest bar and
-   the board is empty on a phone, so the emotes live there. */
+   40px. Round two raised the floor from 40 to 44 (the emote pills' sizing
+   lives with the emotebar rules further up): there is a 60px slack band
+   between the rail and the dock, so the buttons grow into empty space and
+   the board loses nothing. */
 @media (max-width: 760px) {
-  .em { padding: 8px 9px; min-height: 36px; }
-  .em .eg { font-size: 16px; }
-  .up { min-height: 40px; }
-  .qgo { min-height: 40px; }
+  .em .eg { font-size: 19px; }
+  .up { min-height: 44px; }
+  .qgo { min-height: 46px; }
+  .qab { min-width: 48px; }
+  .leave { min-height: 44px; padding: 10px 16px; }
 }
 
 /* the painted wordmark: generated art, feathered onto the paper card */
