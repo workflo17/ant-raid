@@ -1036,3 +1036,27 @@ input {
   background-image: var(--wash), var(--grain);
   background-size: 100% 100%, 240px 240px;
 }
+
+/* ─────────────────── the foliage: the painting continues ───────────────────
+   The wordmark's leaves do not stop at the wordmark. The garland hangs from
+   the top of every big card and the vines climb both lower flanks, painted by
+   the same forge in the same palette and keyed onto the parchment, so the
+   title, the lobby and the result read as one continued painting. The centre
+   stays clear on purpose: the art was authored with an empty middle, which is
+   where the buttons and the reading live. Appended after the painted-surface
+   pass so these layers win its background-image. */
+.title-card, .intro-plate {
+  background-image:
+    url('../assets/art/foliage-left.webp'),
+    url('../assets/art/foliage-right.webp'),
+    url('../assets/art/foliage-top.webp'),
+    var(--wash), var(--grain);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  background-position: left bottom, right bottom, top center, 0 0, 0 0;
+  background-size:
+    auto clamp(200px, 55vw, 420px),
+    auto clamp(200px, 55vw, 420px),
+    100% auto,
+    100% 100%,
+    240px 240px;
+}
