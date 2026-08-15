@@ -169,13 +169,17 @@ Seven to choose five from:
 
 | | Cost | Income | What it is for |
 |---|---|---|---|
-| Worker | 60 | +0.72/s | Two per purchase. Cheap bodies, quick income. |
-| Army Ant | 130 | +1.65/s | Three, fast, made of paper. The best income per sugar in the game. |
-| Trap-Jaw | 200 | +2.30/s | Walks into a lane fight and keeps walking. Your front rank. |
-| Exploder | 170 | +1.90/s | Detonates on its first hit. Clears a column or cracks a pad. |
-| Weaver | 190 | +2.10/s | Silk from the back rank. Everything it touches crawls. |
-| Acid Archer | 240 | +2.60/s | Outranges the pads. The answer to a lane you cannot walk into. |
-| Majoress | 420 | +4.40/s | Enormous and armoured, a 30-point bite, and she pays her way. |
+| Worker | 60 | +0.72/s | They tandem run: a Worker touching another Worker in the column keeps a quicker step, so trains move like they mean it. |
+| Army Ant | 130 | +1.65/s | The best income per sugar, and four or more in one lane bite in a frenzy. The swarm hunts by tempo. |
+| Trap-Jaw | 200 | +2.30/s | The snap: its first hit on each new foe lands double, the fastest strike in nature. Your front rank. |
+| Exploder | 170 | +1.90/s | Autothysis, which real ants do: it detonates on its first hit. Clears a column or cracks a pad. |
+| Weaver | 190 | +2.10/s | Silk from the back rank, and a snare on the ground where it falls that grips whoever crosses it. |
+| Acid Archer | 240 | +2.60/s | Outranges the pads, and its acid etches armour off a point per hit, for good. |
+| Majoress | 420 | +4.40/s | A living shield: raiders marching behind her take less pad fire. Mortars arc over her, and know it. |
+
+Every signature is real myrmecology wearing game clothes: tandem running,
+swarm raiding, the mandible snap, weaver silk, formic acid, majors as living
+walls, and exploding ants, which genuinely exist.
 
 Income per sugar is nearly flat across the seven, a mild premium on the cheap
 ones. Buy for the fight you are in, not for the interest rate.

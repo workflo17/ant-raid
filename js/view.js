@@ -72,6 +72,7 @@ export function buildView(map, cur, prev, a = 1) {
     t: cur.t,
     nestHp: cur.hp,
     nestOut: cur.out || cur.hp.map((h) => h <= 0),
+    silks: (cur.sk || []).map(([x, y, team, r]) => ({ x, y, team, r })),
     units, defs, walls, wild,
     food: {
       hold: cur.fd ? cur.fd[0] : 0,

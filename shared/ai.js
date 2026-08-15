@@ -17,7 +17,13 @@ const LEVELS = {
   easy:   { think: 1.6,  maxDefs: 2, pushAt: 380, powers: ['acidrain'], greed: 0.25, tech: 0.3, ecoUntil: 40,  ecoTarget: 6 },
   normal: { think: 0.95, maxDefs: 3, pushAt: 520, powers: ['acidrain', 'rally', 'barricade'], greed: 0.5, tech: 0.6, ecoUntil: 110, ecoTarget: 14 },
   hard:   { think: 0.55, maxDefs: 4, pushAt: 620, powers: ['acidrain', 'rally', 'barricade'], greed: 0.7, tech: 0.95, ecoUntil: 150, ecoTarget: 22 },
-  coop:   { think: 0.5,  maxDefs: 4, pushAt: 700, powers: ['acidrain', 'rally', 'barricade'], greed: 0.8, tech: 1.0, ecoUntil: 150, ecoTarget: 24 },
+  // pushAt 700 -> 900 when the species signatures landed and the pair drifted
+  // to 61 percent. Two levers were tried and measured: more income saturates
+  // (the bot already banked 2800 unspent), and a FASTER bot made it worse, 66
+  // percent, because the extra thinks went on trickle chaff rather than
+  // pushes. What the deep bank actually buys is BIGGER WAVES: committing at
+  // 900 turns the idle pile into columns with a Majoress at their head.
+  coop:   { think: 0.5,  maxDefs: 4, pushAt: 900, powers: ['acidrain', 'rally', 'barricade'], greed: 0.8, tech: 1.0, ecoUntil: 150, ecoTarget: 24 },
 };
 
 // Opening build order, then it improvises. Cheap wall first, teeth second.

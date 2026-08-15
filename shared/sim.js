@@ -17,6 +17,32 @@ import {
 } from './data/heroes.js';
 
 const WILD_IDS = WILDLIFE.types.map((w) => w.type);
+
+// Species with a signature behaviour, looked up once. Every one of these is
+// real myrmecology wearing game clothes, the same well the pheromone system
+// came from: tandem running (Temnothorax), swarm raiding (Eciton), the
+// mandible snap (Odontomachus), weaver silk (Oecophylla), formic acid spray
+// (Formica), majors as living shields, and the Exploder's autothysis
+// (Colobopsis explodens), which has been its whole design since day one.
+const T_WORKER = RAIDER_IDS.indexOf('worker');
+const T_ARMY = RAIDER_IDS.indexOf('army');
+const T_TRAPJAW = RAIDER_IDS.indexOf('trapjaw');
+const T_WEAVER = RAIDER_IDS.indexOf('weaver');
+const T_ARCHER = RAIDER_IDS.indexOf('archer');
+const T_MAJORESS = RAIDER_IDS.indexOf('majoress');
+const QUIRK = {
+  tandem: 1.12,        // a Worker directly behind another Worker walks this much faster
+  frenzyAt: 4,         // this many Army Ants in one lane...
+  frenzyCd: 0.8,       // ...and all of them bite this much sooner
+  snap: 2,             // the Trap-Jaw's first hit on each new foe
+  silkR: 26,           // the snare a fallen Weaver leaves...
+  silkSlow: 0.62,      // ...and how hard it grips
+  silkFor: 3.5,        // ...and for how long
+  silkCap: 40,         // never more snares than this on the board at once
+  corrode: 1,          // armour a single acid hit etches away, for good
+  shieldR: 60,         // how far behind a Majoress her cover reaches
+  shieldMul: 0.7,      // pad fire on the column behind her is scaled by this
+};
 const scratch = { x: 0, y: 0, angle: 0, seg: 0 };
 
 // A hero rides in this.units alongside the raiders so that targeting, column
@@ -60,6 +86,7 @@ export class Sim {
     this.defs = [];
     this.walls = [];
     this.wild = [];
+    this.silks = [];   // snares fallen Weavers leave behind
     this.fx = [];
 
     // HOW MANY COLONIES. The board decides, not the player list: a board with
@@ -420,6 +447,8 @@ export class Sim {
       heroHit: -1,       // whose queen last hurt it, for the assist window
       heroHitT: -Infinity,
       colAhead: null,
+      lastTarget: null,  // the Trap-Jaw's snap re-arms on a new foe
+      corrode: 0,        // armour etched off by acid, permanent for this body
       caste: o.caste || 0,
       lv: o.lv || 0,     // queens only
       ons: 0,            // Onslaught expiry, queens only
@@ -773,6 +802,7 @@ export class Sim {
     this._stepWildlife(dt);
     this._stepFood(dt);
     this._stepPheromone(dt);
+    if (this.silks.length) this.silks = this.silks.filter((k) => k.until > this.t);
     this._stepUnits(dt);
     this._stepDefenders(dt);
     this._stepRains(dt);
@@ -855,6 +885,12 @@ export class Sim {
       if (u.kind === 'h') { u.colAhead = null; continue; }
       columns[u.team][u.lane].push(u);
     }
+    // how many Army Ants each colony has in each lane, for the frenzy
+    const armyN = columns.map((rows) => rows.map((col) => {
+      let n = 0;
+      for (const u of col) if (u.t === T_ARMY) n++;
+      return n;
+    }));
     for (let team = 0; team < this.teamCount; team++) {
       for (let l = 0; l < this.map.lanes.length; l++) {
         const col = columns[team][l];
@@ -867,7 +903,16 @@ export class Sim {
         // treated as the leader and the one in front was shoved backwards.
         const facing = col[0].dir;
         col.sort((a, b) => (facing > 0 ? b.d - a.d : a.d - b.d));
-        for (let i = 0; i < col.length; i++) col[i].colAhead = i > 0 ? col[i - 1] : null;
+        for (let i = 0; i < col.length; i++) {
+          col[i].colAhead = i > 0 ? col[i - 1] : null;
+          // tandem running belongs to the TRAIN, not the follower: a follower
+          // alone gains nothing, because the column clamp caps it at the
+          // leader's pace. Any Worker touching another Worker in the column
+          // (ahead OR behind) keeps the quicker step, leader included, which
+          // is what actually moves a train faster.
+          col[i].tandem = col[i].t === T_WORKER
+            && ((i > 0 && col[i - 1].t === T_WORKER) || (i + 1 < col.length && col[i + 1].t === T_WORKER));
+        }
       }
     }
 
@@ -906,19 +951,40 @@ export class Sim {
       // same speed number
       const charging = hero && u.ons > this.t ? QUEENS[queenOfT(u.t)].ability.speedMul : 1;
       const scent = 1 + PHEROMONE.speed * this.pher[u.team][u.lane];
-      const spdMul = (1 + (POWERS.rally.speedMul - 1) * rPow) * charging * scent
+      // TANDEM RUNNING: a Worker directly behind another Worker keeps its
+      // pace, the way real tandem pairs do. Worker trains move like they mean it.
+      const tandem = !hero && u.tandem ? QUIRK.tandem : 1;
+      // and a fallen Weaver's snare grips anyone who crosses it
+      let silk = 1;
+      for (const k of this.silks) {
+        if (k.team !== u.team && dist(u.x, u.y, k.x, k.y) <= k.r) { silk = QUIRK.silkSlow; break; }
+      }
+      const spdMul = (1 + (POWERS.rally.speedMul - 1) * rPow) * charging * scent * tandem * silk
         * u.slowMul * this.map.slowAt(u.x, u.y);
 
       const target = u.target;
       if (target) {
         if (u.cd <= 0) {
-          u.cd = def.cooldown || 0.4;
+          // THE FRENZY: enough Army Ants in one lane and all of them bite
+          // sooner. Real swarm raiders overwhelm by tempo, not by size.
+          const frenzy = !hero && u.t === T_ARMY && armyN[u.team][u.lane] >= QUIRK.frenzyAt;
+          u.cd = (def.cooldown || 0.4) * (frenzy ? QUIRK.frenzyCd : 1);
           u.atk = 0.12;
           if (def.blast) {
             this._blast(u.x, u.y, def.blast.r, def.blast.damage * dmgMul, u.team, u.owner);
             u.hp = 0;
           } else {
-            this._damage(target, def.damage * dmgMul, u.owner, hero);
+            // THE SNAP: a Trap-Jaw's first hit on each new foe is the fastest
+            // strike in nature, and lands double. Re-arms when it switches.
+            let hit = def.damage * dmgMul;
+            if (!hero && u.t === T_TRAPJAW && target !== u.lastTarget) {
+              hit *= QUIRK.snap;
+              u.lastTarget = target;
+            }
+            this._damage(target, hit, u.owner, hero);
+            // THE ETCH: acid strips armour a point per hit, for good. The
+            // Archer is the roster's answer to the armoured, by chemistry.
+            if (!hero && u.t === T_ARCHER) target.corrode = (target.corrode || 0) + QUIRK.corrode;
             if (def.slow) { target.slowMul = def.slow.mul; target.slowT = def.slow.dur; }
             this.fx.push([FX.HIT, target.x, target.y, u.t]);
             if (def.range > 60) this.fx.push([FX.SHOOT, u.x, u.y, u.t]);
@@ -1090,17 +1156,34 @@ export class Sim {
       } else if (def.maxTargets) {
         hits.sort((a, b) => a.dd - b.dd);
         for (const h of hits.slice(0, def.maxTargets)) {
-          this._damage(h.u, dmg, d.owner);
+          this._damage(h.u, dmg * this._shieldMul(h.u), d.owner);
           if (def.slow) { h.u.slowMul = def.slow.mul; h.u.slowT = def.slow.dur; }
           this.fx.push([FX.HIT, h.u.x, h.u.y, d.t]);
         }
       } else {
-        this._damage(nearest, dmg, d.owner);
+        this._damage(nearest, dmg * this._shieldMul(nearest), d.owner);
         if (def.slow) { nearest.slowMul = def.slow.mul; nearest.slowT = def.slow.dur; }
         this.fx.push([FX.HIT, nearest.x, nearest.y, d.t]);
         if (def.range > 90) this.fx.push([FX.SHOOT, d.x, d.y, d.t]);
       }
     }
+  }
+
+  /**
+   * THE SHIELD: pad fire on a raider marching behind a Majoress in her lane is
+   * scaled down. She is the living wall real majors are, and the column that
+   * advances behind her advances behind her on purpose. Blasts ignore this:
+   * a Mortar arcs over her, which is the counter and knows it.
+   */
+  _shieldMul(u) {
+    if (!u || u.kind === 'w' || u.kind === 'd') return 1;
+    for (const m of this.units) {
+      if (m.team !== u.team || m.kind !== 'r' || m.t !== T_MAJORESS || m.hp <= 0) continue;
+      if (m.lane !== u.lane || m === u) continue;
+      const gap = (m.d - u.d) * u.dir;
+      if (gap > 0 && gap <= QUIRK.shieldR) return QUIRK.shieldMul;
+    }
+    return 1;
   }
 
   _stepRains(dt) {
@@ -1150,7 +1233,9 @@ export class Sim {
     let amt = amount;
     if (target.kind === 'r' || target.kind === 'h') {
       const rd = this.statsOf(target);
-      if (rd.armor) amt = Math.max(1, amt - rd.armor); // armour bites per hit, not per tick
+      // armour bites per hit, not per tick, minus whatever acid has etched away
+      const armor = Math.max(0, (rd.armor || 0) - (target.corrode || 0));
+      if (armor) amt = Math.max(1, amt - armor);
     }
     let e = this._dmg.get(target);
     if (!e) { e = { amt: 0, topOwner: -1, topAmt: 0, heroOwner: -1, heroAmt: 0 }; this._dmg.set(target, e); }
@@ -1211,6 +1296,10 @@ export class Sim {
       const u = this.units[i];
       if (u.hp > 0) continue;
       this.fx.push([FX.POP, Math.round(u.x), Math.round(u.y), u.t]);
+      // a Weaver dies as it lived: the silk stays, and the ground remembers
+      if (u.kind === 'r' && u.t === T_WEAVER && this.silks.length < QUIRK.silkCap) {
+        this.silks.push({ x: u.x, y: u.y, team: u.team, r: QUIRK.silkR, until: this.t + QUIRK.silkFor });
+      }
       if (u.lastHit >= 0 && this.players[u.lastHit]) this.players[u.lastHit].kills++;
       if (u.kind === 'h') {
         // she keeps her levels and comes back free, but the wait grows with how
@@ -1376,6 +1465,7 @@ export class Sim {
       d: this.defs.map((d) => [d.id, d.t, d.team, d.pad, Math.round(d.hp), d.atk > 0 ? 1 : 0, d.owner]),
       w: this.walls.map((w) => [w.id, w.team, w.lane, Math.round(w.d), Math.round(w.hp)]),
       b: this.wild.map((w) => [w.id, w.t, w.lane, Math.round(w.d * 10) / 10, Math.round(w.hp), w.dir]),
+      sk: this.silks.map((k) => [Math.round(k.x), Math.round(k.y), k.team, k.r]),
       fd: [Math.round(this.foodHold * 100) / 100, this.foodOwner, this.foodLead],
       ph: this.pher.map((row) => row.map((v) => Math.round(v * 100) / 100)),
       r: this.rallies.map((row) => row.map((v) => (v > this.t ? 1 : 0))),

@@ -32,19 +32,19 @@ export const RAIDERS = {
     name: 'Worker', species: 'worker', hotkey: '1',
     color: '#e8952f', dark: '#7a4a12', scale: 0.68, radius: 11,
     cost: 60, count: 2, hp: 130, damage: 17, cooldown: 0.8, speed: 48, range: 26, siege: 5, eco: 0.72,
-    tagline: 'Two for nothing. Cheap bodies, quick income.',
+    tagline: 'Two for nothing, and they tandem run: faster directly behind another Worker.',
   },
   army: {
     name: 'Army Ant', species: 'army', hotkey: '2',
     color: '#7a2d1c', dark: '#3d130a', scale: 0.6, radius: 10,
     cost: 130, count: 3, hp: 80, damage: 21, cooldown: 0.55, speed: 78, range: 24, siege: 4, eco: 1.65,
-    tagline: 'Three sprinters, and the fastest way to grow your income.',
+    tagline: 'Three sprinters. Four or more in one lane bite in a frenzy.',
   },
   trapjaw: {
     name: 'Trap-Jaw', species: 'trapjaw', hotkey: '3',
     color: '#b5442c', dark: '#5e1d0e', scale: 0.82, radius: 14,
     cost: 200, count: 1, hp: 430, damage: 52, cooldown: 1.0, speed: 42, range: 32, siege: 11, eco: 2.3,
-    tagline: 'Walks through a lane fight and keeps walking.',
+    tagline: 'The snap: its first hit on each new foe lands double. Then it keeps walking.',
   },
   exploder: {
     name: 'Exploder', species: 'exploder', hotkey: '4',
@@ -58,21 +58,21 @@ export const RAIDERS = {
     color: '#2fa7a0', dark: '#0e4f4b', scale: 0.72, radius: 12,
     cost: 190, count: 1, hp: 190, damage: 14, cooldown: 1.1, speed: 44, range: 112, siege: 3, eco: 2.1,
     slow: { mul: 0.55, dur: 1.6 }, vsDefender: true,
-    tagline: 'Silk from the back rank. Everything it touches crawls.',
+    tagline: 'Silk from the back rank, and a snare on the ground where it falls.',
   },
   archer: {
     name: 'Acid Archer', species: 'archer', hotkey: '6',
     color: '#8e5bc6', dark: '#43246b', scale: 0.72, radius: 12,
     cost: 240, count: 1, hp: 150, damage: 46, cooldown: 1.25, speed: 38, range: 138, siege: 5, eco: 2.6,
     vsDefender: true,
-    tagline: 'Outranges the pads. The answer to a turtled lane.',
+    tagline: 'Outranges the pads, and its acid etches armour off a point at a time.',
   },
   majoress: {
     name: 'Majoress', species: 'majoress', hotkey: '7',
     color: '#7b3fa0', dark: '#3c1657', scale: 1.05, radius: 18,
     cost: 420, count: 1, hp: 900, damage: 84, cooldown: 1.4, speed: 30, range: 34, siege: 30, eco: 4.4,
     armor: 6, vsDefender: true,
-    tagline: 'Slow, enormous, and takes a chunk out of the nest.',
+    tagline: 'Slow, enormous, a living shield: the column behind her takes less pad fire.',
   },
 };
 

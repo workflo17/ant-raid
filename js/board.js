@@ -175,6 +175,26 @@ export function showHint(team, text) {
   bubbles[team] = { e: { text }, target: -1, until: time + EMOTE_SHOW * 1.6, born: time };
 }
 
+/** The snare a fallen Weaver leaves: a pale web in its colony's tint. */
+function drawSilks(view) {
+  if (!view?.silks?.length) return;
+  c.save();
+  for (const k of view.silks) {
+    const T2 = teamTint(k.team);
+    c.globalAlpha = 0.5;
+    c.strokeStyle = '#f2ead2';
+    c.lineWidth = 1.4;
+    for (let i = 0; i < 3; i++) {
+      c.beginPath(); c.ellipse(k.x, k.y, k.r * (0.4 + i * 0.3), k.r * (0.3 + i * 0.24), 0.3, 0, TAU); c.stroke();
+    }
+    c.globalAlpha = 0.9;
+    c.strokeStyle = T2.ring;
+    c.lineWidth = 1;
+    c.beginPath(); c.ellipse(k.x, k.y, k.r * 0.55, k.r * 0.42, 0.3, 0, TAU); c.stroke();
+  }
+  c.restore();
+}
+
 function drawBacks() {
   const froms = Object.keys(backs);
   for (const f of froms) {
@@ -400,6 +420,7 @@ export function draw(view, dt, ui) {
   stampFootfall(view, dt);
   updateParticles(dt);
   drawParticles(c);
+  drawSilks(view);
   drawBacks();
   drawEmotes();
 

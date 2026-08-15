@@ -406,6 +406,109 @@ test('one strong trail per colony: marking a new road costs the old one', () => 
   assert.equal(sim.pher[1][0], theirs, 'one colony marking decayed the OTHER colony\'s trail');
 });
 
+test('every species signature does what its tagline says', () => {
+  const armed = () => {
+    const sim = duel({ wildlife: false });
+    for (const p of sim.players) { p.roster = [...RAIDER_IDS]; p.sugar = 99999; }
+    return sim;
+  };
+
+  // TANDEM: a worker behind a worker outruns a lone one
+  {
+    const sim = armed();
+    sim.command('A', { kind: 'send', unit: 'worker', lane: 0 });   // a pair, in column
+    sim.command('A', { kind: 'send', unit: 'worker', lane: 2 });   // control pair, then thin it
+    const low = sim.units.filter((u) => u.lane === 2);
+    low[1].hp = 0;                                                 // lone worker on lane 2
+    for (let i = 0; i < 60; i++) sim.step(DT);
+    const leader = Math.max(...sim.units.filter((u) => u.lane === 0).map((u) => u.d));
+    const lone = sim.units.find((u) => u.lane === 2);
+    assert.ok(leader > lone.d + 1, `tandem train ${leader.toFixed(1)} vs lone ${lone.d.toFixed(1)}`);
+  }
+
+  // SNAP: a trap-jaw's first hit doubles, its second does not
+  {
+    const sim = armed();
+    sim.command('A', { kind: 'send', unit: 'trapjaw', lane: 1 });
+    sim.command('B', { kind: 'send', unit: 'majoress', lane: 1 });
+    const tj = sim.units.find((u) => u.team === 0);
+    const mj = sim.units.find((u) => u.team === 1);
+    tj.d = 300; mj.d = sim.map.laneLen[1] - 310;
+    let first = 0, second = 0, prev = mj.hp;
+    for (let i = 0; i < 200 && !second; i++) {
+      sim.step(DT);
+      if (mj.hp < prev) { if (!first) first = prev - mj.hp; else second = prev - mj.hp; prev = mj.hp; }
+    }
+    assert.ok(first > second * 1.6, `snap ${first.toFixed(0)} vs bite ${second.toFixed(0)}`);
+  }
+
+  // ETCH: archer hits strip armour, so later hits land harder
+  {
+    const sim = armed();
+    const target = { kind: 'r', t: RAIDER_IDS.indexOf('majoress'), hp: 900, caste: 0, corrode: 0 };
+    sim._damage(target, 20, 0);
+    sim._applyDamage();
+    const before = 900 - target.hp;         // 20 - 6 armour = 14
+    target.corrode = 6;
+    sim._damage(target, 20, 0);
+    sim._applyDamage();
+    const after = 900 - before - target.hp; // full 20 once etched through
+    assert.ok(after > before, `etched ${after} vs armoured ${before}`);
+  }
+
+  // SNARE: a dead weaver leaves silk that slows the enemy crossing it
+  {
+    const sim = armed();
+    sim.command('A', { kind: 'send', unit: 'weaver', lane: 1 });
+    const w = sim.units.find((u) => u.team === 0);
+    w.d = 200; sim.step(DT);
+    w.hp = 0; sim.step(DT);
+    assert.equal(sim.silks.length, 1, 'no snare where the weaver fell');
+    assert.equal(sim.silks[0].team, 0);
+    // silk expires
+    sim.t += 10; sim.step(DT);
+    assert.equal(sim.silks.length, 0, 'the snare never let go');
+  }
+
+  // SHIELD: pad fire on a raider behind a majoress is reduced
+  {
+    const sim = armed();
+    sim.command('A', { kind: 'send', unit: 'majoress', lane: 1 });
+    sim.command('A', { kind: 'send', unit: 'worker', lane: 1 });
+    const mj = sim.units.find((u) => u.t === RAIDER_IDS.indexOf('majoress'));
+    const wk = sim.units.find((u) => u.t === RAIDER_IDS.indexOf('worker'));
+    mj.d = 400; wk.d = 360;                  // worker tucked behind her
+    sim._positions();
+    assert.equal(sim._shieldMul(wk), 0.7, 'the shield did not cover the follower');
+    assert.equal(sim._shieldMul(mj), 1, 'she shielded herself');
+    wk.d = 480;                              // in FRONT of her: no cover
+    assert.equal(sim._shieldMul(wk), 1, 'the shield reached forward');
+  }
+
+  // FRENZY: four army ants in a lane bite faster than three
+  {
+    const sim = armed();
+    for (let i = 0; i < 2; i++) sim.command('A', { kind: 'send', unit: 'army', lane: 1 }); // 6 bodies
+    sim.command('B', { kind: 'send', unit: 'majoress', lane: 1 });
+    const mine = sim.units.filter((u) => u.team === 0);
+    const mj = sim.units.find((u) => u.team === 1);
+    mine.forEach((u, i) => { u.d = 300 - i * 14; });
+    mj.d = sim.map.laneLen[1] - 320;
+    sim.step(DT);
+    // she outranges them by ten pixels and her bite kills an 80hp body, so the
+    // FRONT ant usually dies without swinging: the swarm wins by numbers, and
+    // the test watches whichever of them lives to bite
+    let biter = null;
+    for (let i = 0; i < 200 && !biter; i++) {
+      sim.step(DT);
+      biter = mine.find((u) => u.hp > 0 && u.cd > 0);
+    }
+    assert.ok(biter, 'no army ant ever attacked');
+    assert.ok(biter.cd <= RAIDERS.army.cooldown * 0.8 + 1e-9,
+      `frenzy cooldown ${biter.cd.toFixed(2)} vs base ${RAIDERS.army.cooldown}`);
+  }
+});
+
 test('trail orders: sends follow the scent, and a fork takes turns', () => {
   const sim = duel();
   const a = sim.playerById('A');
@@ -478,7 +581,9 @@ test('each ability does the one thing it advertises', () => {
     run(sim, 12);
     sim.playerById('A').heroLevel = HERO.abilityAt;
     const foe = sim.units.find((u) => u.team === 1);
-    assert.equal(foe.slowMul, 1);
+    // tandem-running workers arrive sooner, so she may already have attack-silked
+    // them (0.62); the Snare's 0.35 is the value that proves the ability fired
+    assert.notEqual(foe.slowMul, QUEENS.vespula.ability.slow.mul);
     assert.equal(sim.command('A', { kind: 'ability' }).ok, true);
     assert.equal(foe.slowMul, QUEENS.vespula.ability.slow.mul, 'snare did not stick');
   }
