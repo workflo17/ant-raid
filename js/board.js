@@ -195,6 +195,119 @@ function drawSilks(view) {
   c.restore();
 }
 
+// -------------------------------------------- the board's signature element
+// Each board owns at most one of these. The tide and the beetles are drawn
+// straight off the view clock with the same functions the sim uses, so what
+// you see IS what the sim is doing; only the fruit needs telling (who has
+// taken what is state, not clockwork).
+
+/** How deep the seep is right now, 0 dry to 1 up, with a short rise and drain. */
+function tideLevel(t) {
+  const td = MAP.tide;
+  const P = td.period;
+  const s = t % P;
+  const start = P * (1 - td.high);
+  if (s >= start) return Math.min(1, (s - start) / 2.2);   // coming in
+  if (s < 2.2) return 1 - s / 2.2;                          // draining away
+  return 0;
+}
+
+function drawTide(view) {
+  if (!MAP.tide || !view) return;
+  const lvl = tideLevel(view.t);
+  if (lvl <= 0.01) return;
+  c.save();
+  for (const h of MAP.tide.hazards) {
+    c.globalAlpha = 0.42 * lvl;
+    c.fillStyle = '#6eafcd';
+    c.beginPath(); c.ellipse(h.x, h.y, h.r * (0.7 + 0.3 * lvl), h.r * 0.8 * (0.7 + 0.3 * lvl), 0, 0, TAU); c.fill();
+    // the waterline, wobbling while the level moves
+    c.globalAlpha = 0.5 * lvl;
+    c.strokeStyle = '#cfe8f2';
+    c.lineWidth = 1.6;
+    const wob = 1 + Math.sin(time * 2.4 + h.x) * 0.02;
+    c.beginPath(); c.ellipse(h.x, h.y, h.r * (0.7 + 0.3 * lvl) * wob, h.r * 0.8 * (0.7 + 0.3 * lvl), 0, 0, TAU); c.stroke();
+  }
+  c.restore();
+}
+
+function drawCrumbs(view) {
+  if (!MAP.drops || !view) return;
+  const D = MAP.drops;
+  // the shadow of the NEXT one, growing as it comes down
+  const k = view.t < D.first ? 0 : Math.floor((view.t - D.first) / D.every) + 1;
+  const nd = D.first + k * D.every;
+  const left = nd - view.t;
+  if (left < 1.6) {
+    const grow = 1 - left / 1.6;
+    c.save();
+    c.globalAlpha = 0.22 * grow;
+    c.fillStyle = INK;
+    // the pair falls together, so both shadows grow together
+    for (const s of D.spots[k % D.spots.length]) {
+      c.beginPath(); c.ellipse(s.x, s.y, 6 + 9 * grow, (6 + 9 * grow) * 0.62, 0, 0, TAU); c.fill();
+    }
+    c.restore();
+  }
+  for (const cr of view.crumbs) {
+    const bob = Math.sin(time * 3 + cr.x) * 0.8;
+    c.save();
+    c.translate(cr.x, cr.y + bob);
+    // a chunk of fallen fruit: flesh, skin, shine
+    c.fillStyle = INK;
+    c.beginPath(); c.ellipse(0, 0, 10.5, 8.5, 0.3, 0, TAU); c.fill();
+    c.fillStyle = '#f2d98c';
+    c.beginPath(); c.ellipse(0, 0, 9, 7, 0.3, 0, TAU); c.fill();
+    c.fillStyle = '#c9564a';
+    c.beginPath(); c.ellipse(-2, -3.5, 6.5, 3.4, 0.5, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.55)';
+    c.beginPath(); c.ellipse(2.5, -1.5, 2.2, 1.3, 0.4, 0, TAU); c.fill();
+    c.restore();
+  }
+}
+
+function drawProwlers(view) {
+  if (!MAP.prowl || !view) return;
+  const pair = MAP.prowlAt(view.t);
+  for (let i = 0; i < pair.length; i++) {
+    const b = pair[i];
+    // its reach, faint: the road is priced, the price should be visible
+    c.save();
+    c.globalAlpha = 0.09;
+    c.fillStyle = '#5a2f1c';
+    c.beginPath(); c.arc(b.x, b.y, MAP.prowl.r, 0, TAU); c.fill();
+    c.restore();
+    c.save();
+    c.translate(b.x, b.y);
+    c.rotate(b.angle);
+    drawBugBody(c, {
+      type: { color: '#54402a', dark: '#241a10', radius: 13, bodyL: 1.2, bodyW: 1.05 },
+      dist: b.d, phase: i * 1.3, radius: 13,
+    }, time);
+    c.restore();
+  }
+}
+
+function drawBalm(view) {
+  if (!MAP.balm || !view) return;
+  c.save();
+  for (const pool of MAP.balm.pools) {
+    c.globalAlpha = 0.07 + Math.sin(time * 1.8 + pool.x) * 0.025;
+    c.fillStyle = '#a8e063';
+    c.beginPath(); c.arc(pool.x, pool.y, pool.r, 0, TAU); c.fill();
+    // motes drifting up out of the beds, on a loop
+    c.fillStyle = '#d9f2a8';
+    for (let i = 0; i < 4; i++) {
+      const ph = ((time * 0.22 + i * 0.25) % 1);
+      const mx = pool.x + Math.sin(i * 2.4 + pool.y) * pool.r * 0.5;
+      const my = pool.y + pool.r * 0.45 - ph * pool.r * 0.9;
+      c.globalAlpha = 0.5 * Math.sin(ph * Math.PI);
+      c.beginPath(); c.arc(mx, my, 1.7, 0, TAU); c.fill();
+    }
+  }
+  c.restore();
+}
+
 function drawBacks() {
   const froms = Object.keys(backs);
   for (const f of froms) {
@@ -408,11 +521,15 @@ export function draw(view, dt, ui) {
   if (!view) { paintVignette(c, T, W, H); return; }
 
   drawNestArt(view);
+  drawTide(view);
+  drawBalm(view);
   drawPheromone(view);
   drawFood(view);
+  drawCrumbs(view);
   drawLaneMoods(view);
   drawWalls(view);
   drawWild(view);
+  drawProwlers(view);
   drawDefenders(view);
   drawUnits(view);
   drawNests(view);
@@ -439,13 +556,15 @@ export function draw(view, dt, ui) {
  */
 function drawPheromone(view) {
   if (!view.pher) return;
-  for (let team = 0; team < 2; team++) {
+  // every colony's trails, not the first two: on a ring this loop used to stop
+  // at two and four colonies raided on invisible scent
+  for (let team = 0; team < view.pher.length; team++) {
     for (let l = 0; l < MAP.lanes.length; l++) {
       const v = view.pher[team][l];
       if (v <= 0.01) continue;
       const path = MAP.lanes[l].path;
-      const side = team === 0 ? -1 : 1;
-      const dir = team === 0 ? 1 : -1;
+      const side = team % 2 === 0 ? -1 : 1;
+      const dir = team % 2 === 0 ? 1 : -1;
       const T = teamTint(team);
       c.save();
       c.globalAlpha = 0.14 + v * 0.44;
@@ -467,7 +586,8 @@ function drawPheromone(view) {
 
 /** A lane that is rallied or being rained on says so, in that colony's colour. */
 function drawLaneMoods(view) {
-  for (let team = 0; team < 2; team++) {
+  // same lesson as the trails: rally and rain glows belong to every colony
+  for (let team = 0; team < view.rallies.length; team++) {
     for (let l = 0; l < MAP.lanes.length; l++) {
       if (view.rallies[team][l]) {
         c.save();

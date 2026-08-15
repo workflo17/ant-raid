@@ -14,13 +14,24 @@
 //
 // `props` are DECORATION ONLY and are deliberately NOT mirrored. Nothing reads
 // them but the painter, and a perfectly symmetrical forest floor looks like
-// wallpaper. The one exception is `fungus` on the deep board, which the painter
-// glows and which sits on the same spots as `dark.pools`.
+// wallpaper. The one exception is `fungus`, which the painter glows and which
+// sits on the same spots as the deep board's `dark.pools` and the nursery's
+// `balm.pools`.
 //
-// Per-map play features, all of which resolve to two numbers the sim understands:
+// Per-map play features:
 //   mounds  { x, y, r, range }  a pad standing here reaches further
 //   hazards { x, y, r, slow }   a raider crossing here is slowed
 //   dark    { pools:[{x,y,r}], range }  pads OUTSIDE a pool of light see less
+//   tide    { period, high, hazards }   the hazards only bite while the tide is up
+//   drops   { first, every, amount, r, spots }  fruit falls on a beat; the first
+//           colony to walk an ant over a windfall banks it
+//   prowl   { lane, speed, r, dmg, every, span }  a MIRRORED PAIR of ground
+//           beetles patrols one road and bites any raider in reach
+//   balm    { rate, pools:[{x,y,r}] }   any ant standing in a pool heals
+//
+// EVERY BOARD OWNS EXACTLY ONE OF THESE. Seven boards, seven elements, no
+// repeats: that is what keeps seven boards seven different games instead of
+// three games wearing seven coats. The test suite enforces it.
 
 export const WORLD_W = 960;
 export const WORLD_H = 640;
@@ -72,7 +83,7 @@ export const MAPS = [
     tag: 'Tight',
     theme: 'gully',
     world: 'Forest floor',
-    blurb: 'A washed-out channel where every trail runs close. Splash damage is worth double in here.',
+    blurb: 'A washed-out channel where every trail runs close. One blast can catch two roads.',
     note: 'Standing water sits across the middle of every trail. Ants wade.',
     lanes: [
       { name: 'High Road', key: 'A', points: [[112, 300], [240, 196], [400, 188], [480, 150], [560, 188], [720, 196], [848, 300]] },
@@ -113,11 +124,11 @@ export const MAPS = [
   {
     id: 'galleries',
     name: 'The Long Galleries',
-    tag: 'Long',
+    tag: 'Tidal',
     theme: 'galleries',
     world: 'Underground',
-    blurb: 'Deep tunnels cut through old soil. Wide sweeping runs and a serpentine middle. Long walks, late fights.',
-    note: 'A seep floods the middle gallery. Wet clay is slow going.',
+    blurb: 'Deep tunnels cut through old soil. Wide sweeping runs, and a middle that drowns on a rhythm.',
+    note: 'The seep RISES AND EBBS. At high water the middle gallery crawls. Time your push for the ebb.',
     lanes: [
       { name: 'High Road', key: 'A', points: [[112, 300], [180, 150], [330, 96], [480, 132], [630, 96], [780, 150], [848, 300]] },
       { name: 'Short Road', key: 'S', points: [[120, 320], [260, 300], [400, 368], [480, 320], [560, 368], [700, 300], [840, 320]] },
@@ -129,9 +140,20 @@ export const MAPS = [
       { lane: 1, x: 340, y: 392 },
       { lane: 2, x: 244, y: 432 },
     ],
-    mounds: [{ x: 340, y: 268, r: 32, range: 1.2 }],
-    hazards: [{ x: 404, y: 356, r: 58, slow: 0.58 }],
+    mounds: [],
+    hazards: [],
+    // the board's element: a seep that rises and ebbs on a fixed beat. Half of
+    // every cycle the middle gallery is a crawl, the other half it is clear.
+    // The first half-cycle is DRY, so openings play straight on every board.
+    // The mound this board used to carry went to keep high ground litter's
+    // element alone, and the always-on seep became this.
+    tide: {
+      period: 44,
+      high: 0.5,
+      hazards: [{ x: 404, y: 356, r: 58, slow: 0.5 }, { x: 480, y: 328, r: 48, slow: 0.5 }],
+    },
     props: [
+      // the wet bed stays visible at low water; the tide overlay floods it
       { kind: 'seep', x: 404, y: 356, r: 58 },
       { kind: 'seep', x: 556, y: 356, r: 58 },
       { kind: 'root', x: 150, y: 60, r: 60, a: 1.2 },
@@ -192,11 +214,11 @@ export const MAPS = [
   {
     id: 'windfall',
     name: 'The Windfall',
-    tag: 'Sniper',
+    tag: 'Harvest',
     theme: 'litter',
     world: 'Forest floor',
-    blurb: 'An orchard floor after the drop. Wide-apart trails and a spoil heap over every one.',
-    note: 'Four heaps of high ground. A pad on one reaches further, and every road passes one.',
+    blurb: 'An orchard floor under a tree that has not finished dropping. Wide-apart trails, food still falling.',
+    note: 'Fruit falls on a beat, a PAIR at a time, one either side of the tree. Walk an ant over a windfall to bank it. Nothing says the far one is theirs.',
     lanes: [
       { name: 'High Road', key: 'A', points: [[112, 296], [200, 140], [340, 84], [480, 68], [620, 84], [760, 140], [848, 296]] },
       { name: 'Short Road', key: 'S', points: [[120, 320], [300, 332], [480, 338], [660, 332], [840, 320]] },
@@ -208,13 +230,21 @@ export const MAPS = [
       { lane: 1, x: 392, y: 412 },
       { lane: 2, x: 262, y: 464 },
     ],
-    mounds: [
-      { x: 262, y: 176, r: 34, range: 1.18 },
-      { x: 392, y: 264, r: 30, range: 1.14 },
-      { x: 392, y: 412, r: 30, range: 1.14 },
-      { x: 262, y: 464, r: 34, range: 1.18 },
-    ],
+    mounds: [],
     hazards: [],
+    // the board's element: windfall fruit. Authored on the LEFT half, ON the
+    // roads, and mirrored into pairs that fall together, so it is fair by
+    // construction and collected by walking, not by micromanagement. Each
+    // crumb has a natural owner and a marching column can steal the far one.
+    // The four spoil heaps this board opened with made it Leaf Litter again
+    // with more mounds; the falling fruit is what earns the name.
+    drops: {
+      first: 20,
+      every: 24,
+      amount: 45,
+      r: 18,
+      spots: [{ x: 380, y: 333 }, { x: 340, y: 84 }, { x: 340, y: 556 }],
+    },
     props: [
       { kind: 'leaf', x: 700, y: 80, r: 56, a: 0.6, dead: true },
       { kind: 'leaf', x: 150, y: 600, r: 48, a: -0.5, dead: true },
@@ -232,11 +262,11 @@ export const MAPS = [
   {
     id: 'brook',
     name: 'The Dry Brook',
-    tag: 'Wade',
+    tag: 'Hunted',
     theme: 'gully',
     world: 'Forest floor',
-    blurb: 'A brook bed in a dry month. The outer trails still wade; the middle is dust and open ground.',
-    note: 'Standing pools sit across BOTH outer trails. The Short Road is dry, short, and watched.',
+    blurb: 'A brook bed in a dry month. Nothing left in it but dust, and the things that hunt in it.',
+    note: 'A PAIR of ground beetles patrols the Short Road, and they bite. The outer trails are long, dry, and safe.',
     lanes: [
       { name: 'High Road', key: 'A', points: [[112, 300], [230, 190], [390, 170], [480, 164], [570, 170], [730, 190], [848, 300]] },
       { name: 'Short Road', key: 'S', points: [[120, 320], [290, 326], [480, 330], [670, 326], [840, 320]] },
@@ -249,23 +279,26 @@ export const MAPS = [
       { lane: 2, x: 264, y: 390 },
     ],
     mounds: [],
-    // one pool per approach, NOT one at the middle as well: the first cut also
-    // had pools at x 452, whose mirrors land at 508, and the pair read as a
-    // single slow band across the whole crown of each outer trail. Matches ran
-    // 5.7 minutes as everything funnelled into the dry middle.
-    hazards: [
-      { x: 300, y: 182, r: 56, slow: 0.6 },
-      { x: 300, y: 458, r: 56, slow: 0.6 },
-    ],
+    // no water: the pools this board opened with made it Rain Gully with the
+    // puddles moved. In a dry month the brook's element is what still lives in
+    // the bed. hazards stays empty on purpose.
+    hazards: [],
+    // the board's element: a mirrored pair of ground beetles walking the Short
+    // Road between them, one always at d and one at length minus d, so the
+    // board is dead level at every instant, not just on average. They bite any
+    // raider in reach, whoever it belongs to. The Short Road stays the fastest
+    // way across; now it costs blood instead of time.
+    prowl: { lane: 1, speed: 30, r: 22, dmg: 12, every: 1.0, span: [0.18, 0.82] },
     props: [
-      { kind: 'puddle', x: 300, y: 182, r: 56 },
-      { kind: 'puddle', x: 660, y: 182, r: 56 },
-      { kind: 'puddle', x: 300, y: 458, r: 56 },
-      { kind: 'puddle', x: 660, y: 458, r: 56 },
+      // a dry bed reads in stones and dust, not standing water
+      { kind: 'stone', x: 300, y: 182, r: 30 },
+      { kind: 'stone', x: 660, y: 186, r: 24 },
+      { kind: 'stone', x: 300, y: 458, r: 28 },
+      { kind: 'stone', x: 640, y: 452, r: 32 },
       { kind: 'stone', x: 96, y: 560, r: 42 },
       { kind: 'stone', x: 890, y: 90, r: 36 },
       { kind: 'twig', x: 560, y: 606, r: 58, a: -0.2 },
-      { kind: 'dew', x: 210, y: 92, r: 34 },
+      { kind: 'twig', x: 210, y: 92, r: 44, a: 0.5 },
       { kind: 'leaf', x: 800, y: 592, r: 44, a: 0.8, dead: true },
       { kind: 'moss', x: 40, y: 200, r: 38 },
     ],
@@ -274,11 +307,11 @@ export const MAPS = [
   {
     id: 'nursery',
     name: 'The Fungus Nursery',
-    tag: 'Half-lit',
+    tag: 'Balm',
     theme: 'deep',
     world: 'Underground',
-    blurb: 'A farmed chamber where the light grows in the middle. The approaches are the dark part.',
-    note: 'The fungus beds light the CENTRE. Pads out on the flanks see less than they think.',
+    blurb: 'A farmed chamber, sweet and bright in the middle. The approaches are the hungry part.',
+    note: 'The fungus beds FEED any ant standing in them, whoever it belongs to. A fight over the centre does not stay won.',
     lanes: [
       { name: 'High Road', key: 'A', points: [[112, 296], [220, 176], [392, 150], [480, 200], [568, 150], [740, 176], [848, 296]] },
       { name: 'Short Road', key: 'S', points: [[120, 320], [300, 316], [480, 312], [660, 316], [840, 320]] },
@@ -292,8 +325,12 @@ export const MAPS = [
     ],
     mounds: [],
     hazards: [],
-    dark: {
-      range: 0.8,
+    // the board's element: the beds feed. Any ant standing in a pool heals,
+    // whoever it belongs to, which makes the centre worth holding and impossible
+    // to hold cheaply. The half-light this board opened with was The Blind Deep
+    // inverted; the balm is its own game.
+    balm: {
+      rate: 3,
       pools: [{ x: 386, y: 254, r: 92 }, { x: 386, y: 372, r: 92 }],
     },
     props: [

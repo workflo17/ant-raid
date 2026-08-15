@@ -953,6 +953,47 @@ export function paintThumb(g, map, w) {
     g.save(); g.globalAlpha = 0.55; g.fillStyle = 'rgba(110,175,205,0.8)';
     g.beginPath(); g.ellipse(hz.x, hz.y, hz.r, hz.r * 0.8, 0, 0, TAU); g.fill(); g.restore();
   }
+  // each board's signature element earns a glyph on its card, so the picker
+  // tells the truth about what you are choosing between
+  if (map.tide) {
+    for (const hz of map.tide.hazards) {
+      g.save(); g.globalAlpha = 0.4; g.fillStyle = 'rgba(110,175,205,0.8)';
+      g.beginPath(); g.ellipse(hz.x, hz.y, hz.r, hz.r * 0.8, 0, 0, TAU); g.fill();
+      g.globalAlpha = 0.8; g.strokeStyle = 'rgba(207,232,242,0.9)'; g.lineWidth = 5;
+      g.setLineDash([14, 12]);
+      g.beginPath(); g.ellipse(hz.x, hz.y, hz.r, hz.r * 0.8, 0, 0, TAU); g.stroke();
+      g.restore();
+    }
+  }
+  if (map.drops) {
+    for (const s of map.drops.spots.flat()) {
+      g.save();
+      g.fillStyle = '#f2d98c'; g.strokeStyle = '#5a2f1c'; g.lineWidth = 4;
+      g.beginPath(); g.ellipse(s.x, s.y, 16, 13, 0.3, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = '#c9564a';
+      g.beginPath(); g.ellipse(s.x - 4, s.y - 5, 9, 5, 0.5, 0, TAU); g.fill();
+      g.restore();
+    }
+  }
+  if (map.prowl) {
+    const L = map.laneLen[map.prowl.lane];
+    for (const d of [L * 0.34, L * 0.66]) {
+      const p = map.laneAt(map.prowl.lane, d);
+      g.save();
+      g.translate(p.x, p.y); g.rotate(p.angle);
+      g.fillStyle = '#241a10';
+      g.beginPath(); g.ellipse(0, 0, 20, 13, 0, 0, TAU); g.fill();
+      g.fillStyle = '#54402a';
+      g.beginPath(); g.ellipse(-3, 0, 13, 9, 0, 0, TAU); g.fill();
+      g.restore();
+    }
+  }
+  if (map.balm) {
+    for (const pool of map.balm.pools) {
+      g.save(); g.globalAlpha = 0.3; g.fillStyle = '#a8e063';
+      g.beginPath(); g.arc(pool.x, pool.y, pool.r, 0, TAU); g.fill(); g.restore();
+    }
+  }
   for (const p of map.props) paintProp(g, p, T);
   for (const n of map.nests) paintNest(g, n, T);
   paintGrade(g, map, T, map.width, map.height);

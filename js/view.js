@@ -69,10 +69,13 @@ export function buildView(map, cur, prev, a = 1) {
 
   return {
     n: cur.n,
-    t: cur.t,
+    // interpolated like the ants are: the beetles and the tide are drawn
+    // straight off this clock, and a 10Hz stepped clock gives stepped beetles
+    t: prev && prev !== cur ? lerp(prev.t, cur.t, a) : cur.t,
     nestHp: cur.hp,
     nestOut: cur.out || cur.hp.map((h) => h <= 0),
     silks: (cur.sk || []).map(([x, y, team, r]) => ({ x, y, team, r })),
+    crumbs: (cur.cr || []).map(([x, y]) => ({ x, y })),
     units, defs, walls, wild,
     food: {
       hold: cur.fd ? cur.fd[0] : 0,

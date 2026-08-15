@@ -44,6 +44,8 @@ const QUIRK = {
   shieldMul: 0.7,      // pad fire on the column behind her is scaled by this
 };
 const scratch = { x: 0, y: 0, angle: 0, seg: 0 };
+// the beetle pair's reusable pair of positions, same idea as `scratch`
+const prowlScratch = [{ x: 0, y: 0, angle: 0, seg: 0 }, { x: 0, y: 0, angle: 0, seg: 0 }];
 
 // A hero rides in this.units alongside the raiders so that targeting, column
 // separation, damage and culling all work on her for free. `t` is the tell:
@@ -88,6 +90,13 @@ export class Sim {
     this.wild = [];
     this.silks = [];   // snares fallen Weavers leave behind
     this.fx = [];
+
+    // The board's own moving parts (each board owns at most one of these).
+    // Everything on this list is a deterministic function of the clock and the
+    // mirror, so the fairness proofs that hold for the terrain hold here too.
+    this.crumbs = [];  // windfall fruit nobody has claimed yet
+    this.dropN = 0;    // how many windfalls have hit the ground so far
+    this.prowlCd = 0;  // the beetles' shared bite cooldown
 
     // HOW MANY COLONIES. The board decides, not the player list: a board with
     // three nests is a three-colony game whether or not three people turned up.
@@ -800,6 +809,7 @@ export class Sim {
     this._dmg = new Map();
     this._positions();
     this._stepWildlife(dt);
+    this._stepBoard(dt);
     this._stepFood(dt);
     this._stepPheromone(dt);
     if (this.silks.length) this.silks = this.silks.filter((k) => k.until > this.t);
@@ -866,6 +876,89 @@ export class Sim {
       const lo = this.map.laneLen[w.lane] * 0.22, hi = this.map.laneLen[w.lane] * 0.78;
       if (w.d < lo) { w.d = lo; w.dir = 1; }
       if (w.d > hi) { w.d = hi; w.dir = -1; }
+    }
+  }
+
+  /**
+   * The board's signature element, for the boards that have a moving one. The
+   * tide needs no step at all: slowAt() reads the clock. Everything here is a
+   * deterministic function of `t` and the unit arrays, no RNG, so replays and
+   * the mirror proofs are untouched.
+   */
+  _stepBoard(dt) {
+    const m = this.map;
+
+    // Windfall fruit: falls on a fixed beat, cycling the authored spots in
+    // order. A beat drops the WHOLE mirrored pair at once, or the board tilts.
+    // The first ant to touch a crumb banks it for whoever sent that ant.
+    if (m.drops) {
+      const D = m.drops;
+      const cap = D.spots.reduce((n, pair) => n + pair.length, 0);
+      while (this.t >= D.first + this.dropN * D.every) {
+        for (const s of D.spots[this.dropN % D.spots.length]) this.crumbs.push({ x: s.x, y: s.y });
+        // fruit rots before it stockpiles: never more on the ground than spots
+        while (this.crumbs.length > cap) this.crumbs.shift();
+        this.dropN++;
+      }
+      for (let i = this.crumbs.length - 1; i >= 0; i--) {
+        const cr = this.crumbs[i];
+        // the CLOSEST ant takes it, not the first in the array: array order is
+        // insertion order, which would hand every dead-heat to whoever spawned
+        // an ant earlier
+        let taker = null, best = Infinity;
+        for (const u of this.units) {
+          if (u.hp <= 0) continue;
+          const dd = dist(u.x, u.y, cr.x, cr.y);
+          if (dd <= D.r && dd < best) { taker = u; best = dd; }
+        }
+        if (!taker) continue;
+        const p = this.players[taker.owner];
+        if (p) {
+          p.sugar += D.amount;
+          this.fx.push([FX.BOUNTY, Math.round(cr.x), Math.round(cr.y), D.amount]);
+        }
+        this.crumbs.splice(i, 1);
+      }
+    }
+
+    // The beetle pair: their positions come straight off the clock (the client
+    // draws them from the same function without being told anything), only the
+    // biting lives here. The cooldown starts on a LANDED bite, so the first
+    // ant into reach always pays the toll.
+    if (m.prowl) {
+      if (this.prowlCd > 0) this.prowlCd -= dt;
+      if (this.prowlCd <= 0) {
+        let bit = false;
+        for (const b of m.prowlAt(this.t, prowlScratch)) {
+          let prey = null, best = Infinity;
+          for (const u of this.units) {
+            if (u.hp <= 0) continue;
+            const dd = dist(u.x, u.y, b.x, b.y);
+            if (dd <= m.prowl.r && dd < best) { prey = u; best = dd; }
+          }
+          if (prey) {
+            this._damage(prey, m.prowl.dmg, -1);
+            this.fx.push([FX.HIT, Math.round(prey.x), Math.round(prey.y), prey.t]);
+            bit = true;
+          }
+        }
+        if (bit) this.prowlCd = m.prowl.every;
+      }
+    }
+
+    // The balm: the beds feed any ant standing in them, whoever it belongs to.
+    if (m.balm) {
+      for (const u of this.units) {
+        if (u.hp <= 0) continue;
+        const max = this.statsOf(u).hp;
+        if (u.hp >= max) continue;
+        for (const pool of m.balm.pools) {
+          if (dist(u.x, u.y, pool.x, pool.y) <= pool.r) {
+            u.hp = Math.min(max, u.hp + m.balm.rate * dt);
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -960,7 +1053,7 @@ export class Sim {
         if (k.team !== u.team && dist(u.x, u.y, k.x, k.y) <= k.r) { silk = QUIRK.silkSlow; break; }
       }
       const spdMul = (1 + (POWERS.rally.speedMul - 1) * rPow) * charging * scent * tandem * silk
-        * u.slowMul * this.map.slowAt(u.x, u.y);
+        * u.slowMul * this.map.slowAt(u.x, u.y, this.t);
 
       const target = u.target;
       if (target) {
@@ -1466,6 +1559,9 @@ export class Sim {
       w: this.walls.map((w) => [w.id, w.team, w.lane, Math.round(w.d), Math.round(w.hp)]),
       b: this.wild.map((w) => [w.id, w.t, w.lane, Math.round(w.d * 10) / 10, Math.round(w.hp), w.dir]),
       sk: this.silks.map((k) => [Math.round(k.x), Math.round(k.y), k.team, k.r]),
+      // windfall fruit on the ground. The beetles and the tide are NOT here:
+      // both are pure functions of `t` and the client derives them itself.
+      cr: this.crumbs.map((k) => [Math.round(k.x), Math.round(k.y)]),
       fd: [Math.round(this.foodHold * 100) / 100, this.foodOwner, this.foodLead],
       ph: this.pher.map((row) => row.map((v) => Math.round(v * 100) / 100)),
       r: this.rallies.map((row) => row.map((v) => (v > this.t ? 1 : 0))),

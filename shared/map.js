@@ -45,6 +45,18 @@ export function buildMap(id = DEFAULT_MAP) {
   const mounds = bothSides(def.mounds);
   const hazards = bothSides(def.hazards);
   const darkPools = def.dark ? bothSides(def.dark.pools) : [];
+  // the four signature elements ride the same mirror as everything else.
+  const tideHaz = def.tide ? bothSides(def.tide.hazards) : [];
+  const balmPools = def.balm ? bothSides(def.balm.pools) : [];
+  // Drop spots mirror into PAIRS that fall together, and the pairs stay
+  // grouped: a beat drops the whole pair. One crumb per beat cannot be fair,
+  // wherever it lands: a spot on the centre line is a dead heat for two
+  // mirrored columns, and a dead heat has to be broken somehow, which is a
+  // coin with only one side. mapcheck's identical-script probe caught exactly
+  // that: 296 to 266 off nothing but tie-breaks.
+  const dropSpots = def.drops
+    ? def.drops.spots.map((s) => (onCenter(s.x) ? [{ ...s }] : [{ ...s }, { ...s, x: mirrorX(s.x) }]))
+    : [];
 
   // A pad's reach is decided by where it stands: up on a crumb pile it sees
   // further, out beyond the lantern light it sees less.
@@ -97,6 +109,10 @@ export function buildMap(id = DEFAULT_MAP) {
     mounds,
     hazards,
     dark: def.dark ? { ...def.dark, pools: darkPools } : null,
+    tide: def.tide ? { period: def.tide.period, high: def.tide.high, hazards: tideHaz } : null,
+    drops: def.drops ? { ...def.drops, spots: dropSpots } : null,
+    prowl: def.prowl ? { ...def.prowl } : null,
+    balm: def.balm ? { rate: def.balm.rate, pools: balmPools } : null,
     props: def.props || [],
 
     /** Whose nest sits at the end of this lane an ant walking `dir` is heading for. */
@@ -155,10 +171,49 @@ export function buildMap(id = DEFAULT_MAP) {
       return posAt(p, clamp(d, 0, p.length), out, hint);
     },
 
+    /**
+     * Is the seep up at time `t`? The first half of every cycle is DRY, so the
+     * opening plays straight on every board and the first flood is something
+     * you watch come in rather than something you start underneath.
+     */
+    tideHigh(t) {
+      if (!def.tide) return false;
+      const P = def.tide.period;
+      return (t % P) / P >= 1 - def.tide.high;
+    },
+
+    /**
+     * Where the beetles are at time `t`. A MIRRORED PAIR: one at d, one at
+     * length minus d, always. One beetle walking alone is nearer one colony
+     * than the other at any given instant, and that is a seat bias with legs;
+     * the pair keeps the board dead level at every moment, which is the same
+     * bar every other feature has to clear, and it reads as a mated couple.
+     */
+    prowlAt(t, out = [{}, {}]) {
+      const p = def.prowl;
+      if (!p) return [];
+      const L = laneLen[p.lane];
+      const lo = L * p.span[0], hi = L * p.span[1];
+      const travel = hi - lo;
+      const ph = (t * p.speed) % (2 * travel);
+      const d = ph < travel ? lo + ph : hi - (ph - travel);
+      const dir = ph < travel ? 1 : -1;
+      posAt(lanes[p.lane].path, d, out[0]);
+      out[0].d = d; out[0].dir = dir;
+      posAt(lanes[p.lane].path, L - d, out[1]);
+      out[1].d = L - d; out[1].dir = -dir;
+      // walking backwards means facing backwards
+      if (dir < 0) out[0].angle += Math.PI; else out[1].angle += Math.PI;
+      return out;
+    },
+
     /** Speed multiplier for a raider standing at (x, y). 1 means clear going. */
-    slowAt(x, y) {
+    slowAt(x, y, t = 0) {
       let mul = 1;
       for (const h of hazards) if (dist(x, y, h.x, h.y) <= h.r) mul = Math.min(mul, h.slow);
+      if (def.tide && this.tideHigh(t)) {
+        for (const h of tideHaz) if (dist(x, y, h.x, h.y) <= h.r) mul = Math.min(mul, h.slow);
+      }
       return mul;
     },
   };

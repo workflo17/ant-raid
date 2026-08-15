@@ -188,6 +188,133 @@ test('both worlds are represented, and every map declares which it is', () => {
   for (const m of MAPS) assert.ok(m.theme && m.world && m.blurb && m.note, `${m.id} is missing its copy`);
 });
 
+// ------------------------------------------- one signature element per board
+//
+// Seven boards, seven elements, no repeats. This is the contract that stops a
+// new board quietly becoming an old board with the furniture moved: the moment
+// two boards share their element, or a board has none, or a board has two,
+// this fails and names it.
+
+test('every board owns exactly one signature element, and no two share one', () => {
+  const signatureOf = (m) => {
+    const owned = [];
+    if (m.mounds.length) owned.push('high ground');
+    if (m.hazards.length) owned.push('standing water');
+    if (m.dark) owned.push('darkness');
+    if (m.tide) owned.push('the tide');
+    if (m.drops) owned.push('falling fruit');
+    if (m.prowl) owned.push('the beetle pair');
+    if (m.balm) owned.push('healing beds');
+    return owned;
+  };
+  const seen = new Map();
+  for (const m of builtMaps) {
+    const owned = signatureOf(m);
+    assert.equal(owned.length, 1, `${m.id} owns [${owned.join(', ')}], wants exactly one`);
+    assert.ok(!seen.has(owned[0]), `${m.id} and ${seen.get(owned[0])} both own ${owned[0]}`);
+    seen.set(owned[0], m.id);
+  }
+});
+
+test('the tide is dry for the first half-cycle and slows only while it is up', () => {
+  const m = mapWith((x) => x.tide, 'a tide');
+  const P = m.tide.period;
+  const h = m.tide.hazards[0];
+  assert.equal(m.tideHigh(0), false, 'the opening should be dry');
+  assert.equal(m.tideHigh(P * (1 - m.tide.high) - 0.1), false, 'still dry just before the flood');
+  assert.equal(m.tideHigh(P * (1 - m.tide.high) + 0.1), true, 'flooded just after');
+  assert.equal(m.tideHigh(P - 0.1), true, 'flooded to the end of the cycle');
+  assert.equal(m.slowAt(h.x, h.y, 1), 1, 'dry water does not slow');
+  assert.equal(m.slowAt(h.x, h.y, P - 1), h.slow, 'high water slows');
+  assert.equal(m.slowAt(4, 4, P - 1), 1, 'high water slows only where it stands');
+});
+
+test('fruit falls on the beat, on the roads, and the closest colony banks it', () => {
+  const m = mapWith((x) => x.drops, 'falling fruit');
+  // every spot is ON a road, or the fruit could never be collected by walking,
+  // and every beat is a full mirrored pair, or the board tilts on tie-breaks
+  for (const pair of m.drops.spots) {
+    for (const s of pair) {
+      const onALane = m.lanes.some((l) => distToPath(l.path, s.x, s.y) <= m.drops.r);
+      assert.ok(onALane, `a windfall at ${s.x},${s.y} lands out of reach`);
+    }
+    if (pair.length === 2) {
+      assert.equal(pair[0].x + pair[1].x, WORLD_W, 'a windfall pair is off balance');
+      assert.equal(pair[0].y, pair[1].y, 'a windfall pair is off balance');
+    }
+  }
+  const sim = duel({ map: m.id });
+  const p = sim.playerById('A');
+  run(sim, m.drops.first + 0.5);
+  assert.equal(sim.crumbs.length, m.drops.spots[0].length, 'the first beat should be on the ground, whole');
+  // walk an ant over it and watch the bank
+  p.sugar = 9999;
+  sim.command('A', { kind: 'send', unit: 'worker', lane: 1 });
+  let banked = false;
+  let last = p.sugar;
+  for (let i = 0; i < 60 * 30 && !banked; i++) {
+    sim.step(DT);
+    sim.fx.length = 0;
+    // income per tick is well under 1; the windfall lands whole
+    if (p.sugar - last > m.drops.amount - 1) banked = true;
+    last = p.sugar;
+  }
+  assert.ok(banked, 'walking over a windfall should bank it');
+  assert.ok(sim.crumbs.length < 2, 'a banked windfall should leave the ground');
+});
+
+test('the beetles are a mirrored pair, and the road they hunt costs blood', () => {
+  const m = mapWith((x) => x.prowl, 'a beetle pair');
+  for (const t of [0, 3.7, 11, 60.2, 199]) {
+    const [a, b] = m.prowlAt(t, [{}, {}]);
+    assert.ok(Math.abs(a.x + b.x - WORLD_W) < 1e-6, `beetles unbalanced at t=${t}: ${a.x} + ${b.x}`);
+    assert.ok(Math.abs(a.y - b.y) < 1e-6, `beetles at different heights at t=${t}`);
+  }
+  // a lone raider crossing the hunted road, nobody shooting at it
+  const sim = duel({ map: m.id });
+  sim.playerById('A').sugar = 9999;
+  sim.command('A', { kind: 'send', unit: 'worker', lane: m.prowl.lane });
+  const full = RAIDERS.worker.hp;
+  let bitten = false;
+  for (let i = 0; i < 60 * 30 && !bitten; i++) {
+    sim.step(DT);
+    sim.fx.length = 0;
+    if (sim.units.some((u) => u.hp < full)) bitten = true;
+    if (!sim.units.length) break;
+  }
+  assert.ok(bitten, 'a raider crossed the hunted road unbitten');
+  // and the safe roads are actually safe
+  const calm = duel({ map: m.id });
+  calm.playerById('A').sugar = 9999;
+  calm.command('A', { kind: 'send', unit: 'worker', lane: 0 });
+  for (let i = 0; i < 20 * 30; i++) { calm.step(DT); calm.fx.length = 0; }
+  for (const u of calm.units) assert.equal(u.hp, full, 'bitten on a road the beetles do not hunt');
+});
+
+test('the beds heal any ant standing in them, up to its own ceiling', () => {
+  const m = mapWith((x) => x.balm, 'healing beds');
+  const pool = m.balm.pools[0];
+  const sim = duel({ map: m.id });
+  sim.playerById('A').sugar = 9999;
+  // the middle road passes through the beds; walk a worker in, then hurt it
+  sim.command('A', { kind: 'send', unit: 'worker', lane: 1 });
+  let inPool = false;
+  for (let i = 0; i < 60 * 30 && !inPool; i++) {
+    sim.step(DT);
+    sim.fx.length = 0;
+    const u = sim.units[0];
+    if (u && Math.hypot(u.x - pool.x, u.y - pool.y) <= pool.r - 12) inPool = true;
+  }
+  assert.ok(inPool, 'the middle road never enters the beds');
+  const u = sim.units[0];
+  u.hp = 10;
+  sim.step(DT);
+  assert.ok(u.hp > 10 && u.hp <= 10 + m.balm.rate * DT + 1e-9, 'the beds should feed a hurt ant at the advertised rate');
+  u.hp = RAIDERS.worker.hp;
+  sim.step(DT);
+  assert.ok(u.hp <= RAIDERS.worker.hp, 'the beds must not overfeed past full');
+});
+
 // ------------------------------------------------------------------- economy
 
 test('sugar accrues at the advertised rate and purchases deduct exactly', () => {
