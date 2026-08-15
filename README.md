@@ -281,7 +281,7 @@ ants, the nests as they crumble, the HUD and the result card you send afterwards
 whoever you just played, and your record keeps wins, streaks, per-board tallies
 and a head-to-head against each friend you name. All local, no account.
 
-## The four boards
+## The seven duelling boards
 
 Ant Raid happens at ant scale, so a board is either the **forest floor** seen
 from just above the litter, or a **cross-section of the soil** with the tunnels
@@ -296,6 +296,9 @@ the lobby.
 | **Rain Gully** | Tight, surface | A washed-out channel where every trail runs close, so splash damage is worth double. Standing water sits across the middle of each one. Ants wade. |
 | **The Long Galleries** | Long, underground | Tunnels cut through old soil, wide outer runs and a serpentine middle. A seep floods the middle gallery, and wet clay is slow going. |
 | **The Blind Deep** | Cruel, underground | Every tunnel squeezes through one junction in the middle. Glowing fungus lights the outer galleries only, so a pad in the dark sees 22% less, and the junction where it all happens is the part nobody can light. |
+| **The Windfall** | Sniper, surface | An orchard floor with a spoil heap over every road. Four pieces of high ground, wide-apart trails: the board where committing your trail matters most. |
+| **The Dry Brook** | Wade, surface | A brook bed in a dry month. Both outer trails still wade through standing pools; the middle is dust, short, and watched. Deliberately the slowest board. |
+| **The Fungus Nursery** | Half-lit, underground | The Blind Deep inverted: the fungus beds light the CENTRE, and the flanking approaches are the dark part. Pads out wide see less than they think. |
 
 Boards differ in road shape more than anything else, which is what actually
 changes how a match plays. The Blind Deep's High Road ends up in the same brawl

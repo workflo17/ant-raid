@@ -188,6 +188,128 @@ export const MAPS = [
       { kind: 'pebblewall', x: 70, y: 560, r: 30 },
     ],
   },
+
+  {
+    id: 'windfall',
+    name: 'The Windfall',
+    tag: 'Sniper',
+    theme: 'litter',
+    world: 'Forest floor',
+    blurb: 'An orchard floor after the drop. Wide-apart trails and a spoil heap over every one.',
+    note: 'Four heaps of high ground. A pad on one reaches further, and every road passes one.',
+    lanes: [
+      { name: 'High Road', key: 'A', points: [[112, 296], [200, 140], [340, 84], [480, 68], [620, 84], [760, 140], [848, 296]] },
+      { name: 'Short Road', key: 'S', points: [[120, 320], [300, 332], [480, 338], [660, 332], [840, 320]] },
+      { name: 'Low Road', key: 'D', points: [[112, 344], [200, 500], [340, 556], [480, 572], [620, 556], [760, 500], [848, 344]] },
+    ],
+    pads: [
+      { lane: 0, x: 262, y: 176 },
+      { lane: 1, x: 392, y: 264 },
+      { lane: 1, x: 392, y: 412 },
+      { lane: 2, x: 262, y: 464 },
+    ],
+    mounds: [
+      { x: 262, y: 176, r: 34, range: 1.18 },
+      { x: 392, y: 264, r: 30, range: 1.14 },
+      { x: 392, y: 412, r: 30, range: 1.14 },
+      { x: 262, y: 464, r: 34, range: 1.18 },
+    ],
+    hazards: [],
+    props: [
+      { kind: 'leaf', x: 700, y: 80, r: 56, a: 0.6, dead: true },
+      { kind: 'leaf', x: 150, y: 600, r: 48, a: -0.5, dead: true },
+      { kind: 'acorn', x: 540, y: 606, r: 28 },
+      { kind: 'acorn', x: 906, y: 140, r: 24 },
+      { kind: 'acorn', x: 66, y: 96, r: 22 },
+      { kind: 'twig', x: 810, y: 560, r: 62, a: 0.3 },
+      { kind: 'toadstool', x: 918, y: 372, r: 20 },
+      { kind: 'moss', x: 60, y: 440, r: 46 },
+      { kind: 'needle', x: 350, y: 620, r: 28, a: 0.9 },
+      { kind: 'stone', x: 620, y: 50, r: 26 },
+    ],
+  },
+
+  {
+    id: 'brook',
+    name: 'The Dry Brook',
+    tag: 'Wade',
+    theme: 'gully',
+    world: 'Forest floor',
+    blurb: 'A brook bed in a dry month. The outer trails still wade; the middle is dust and open ground.',
+    note: 'Standing pools sit across BOTH outer trails. The Short Road is dry, short, and watched.',
+    lanes: [
+      { name: 'High Road', key: 'A', points: [[112, 300], [230, 190], [390, 170], [480, 164], [570, 170], [730, 190], [848, 300]] },
+      { name: 'Short Road', key: 'S', points: [[120, 320], [290, 326], [480, 330], [670, 326], [840, 320]] },
+      { name: 'Low Road', key: 'D', points: [[112, 340], [230, 450], [390, 470], [480, 476], [570, 470], [730, 450], [848, 340]] },
+    ],
+    pads: [
+      { lane: 0, x: 264, y: 252 },
+      { lane: 1, x: 380, y: 276 },
+      { lane: 1, x: 380, y: 386 },
+      { lane: 2, x: 264, y: 390 },
+    ],
+    mounds: [],
+    // one pool per approach, NOT one at the middle as well: the first cut also
+    // had pools at x 452, whose mirrors land at 508, and the pair read as a
+    // single slow band across the whole crown of each outer trail. Matches ran
+    // 5.7 minutes as everything funnelled into the dry middle.
+    hazards: [
+      { x: 300, y: 182, r: 56, slow: 0.6 },
+      { x: 300, y: 458, r: 56, slow: 0.6 },
+    ],
+    props: [
+      { kind: 'puddle', x: 300, y: 182, r: 56 },
+      { kind: 'puddle', x: 660, y: 182, r: 56 },
+      { kind: 'puddle', x: 300, y: 458, r: 56 },
+      { kind: 'puddle', x: 660, y: 458, r: 56 },
+      { kind: 'stone', x: 96, y: 560, r: 42 },
+      { kind: 'stone', x: 890, y: 90, r: 36 },
+      { kind: 'twig', x: 560, y: 606, r: 58, a: -0.2 },
+      { kind: 'dew', x: 210, y: 92, r: 34 },
+      { kind: 'leaf', x: 800, y: 592, r: 44, a: 0.8, dead: true },
+      { kind: 'moss', x: 40, y: 200, r: 38 },
+    ],
+  },
+
+  {
+    id: 'nursery',
+    name: 'The Fungus Nursery',
+    tag: 'Half-lit',
+    theme: 'deep',
+    world: 'Underground',
+    blurb: 'A farmed chamber where the light grows in the middle. The approaches are the dark part.',
+    note: 'The fungus beds light the CENTRE. Pads out on the flanks see less than they think.',
+    lanes: [
+      { name: 'High Road', key: 'A', points: [[112, 296], [220, 176], [392, 150], [480, 200], [568, 150], [740, 176], [848, 296]] },
+      { name: 'Short Road', key: 'S', points: [[120, 320], [300, 316], [480, 312], [660, 316], [840, 320]] },
+      { name: 'Low Road', key: 'D', points: [[112, 344], [220, 464], [392, 490], [480, 440], [568, 490], [740, 464], [848, 344]] },
+    ],
+    pads: [
+      { lane: 0, x: 250, y: 240 },
+      { lane: 1, x: 386, y: 254 },
+      { lane: 1, x: 386, y: 372 },
+      { lane: 2, x: 250, y: 400 },
+    ],
+    mounds: [],
+    hazards: [],
+    dark: {
+      range: 0.8,
+      pools: [{ x: 386, y: 254, r: 92 }, { x: 386, y: 372, r: 92 }],
+    },
+    props: [
+      { kind: 'fungus', x: 386, y: 254, r: 92 },
+      { kind: 'fungus', x: 574, y: 254, r: 92 },
+      { kind: 'fungus', x: 386, y: 372, r: 92 },
+      { kind: 'fungus', x: 574, y: 372, r: 92 },
+      { kind: 'root', x: 90, y: 90, r: 58, a: 1.3 },
+      { kind: 'root', x: 860, y: 560, r: 66, a: 2.1 },
+      { kind: 'root', x: 480, y: 46, r: 40, a: 1.7 },
+      { kind: 'grub', x: 750, y: 110, r: 16, a: 0.2 },
+      { kind: 'grub', x: 210, y: 580, r: 14, a: -0.5 },
+      { kind: 'pebblewall', x: 60, y: 320, r: 34 },
+      { kind: 'stone', x: 906, y: 220, r: 30 },
+    ],
+  },
 ];
 
 export const MAP_IDS = MAPS.map((m) => m.id);
