@@ -4,7 +4,7 @@ import { LocalDriver, NetDriver } from './drivers.js';
 import { Sim } from '../shared/sim.js';
 import { buildView } from './view.js';
 import { DT } from '../shared/data/board.js';
-import { initBoard, draw, worldFrom, playFx, setHoverPad, tinted, setMap, showEmote } from './board.js';
+import { initBoard, draw, worldFrom, playFx, setHoverPad, tinted, setMap, showEmote, showBack, showHint } from './board.js';
 import { paintThumb } from './scenery.js';
 import { recordMatch, recordLine, loadRecord, drawResultCard, shareResult, shareText, bestOther } from './record.js';
 import { Hud } from './hud.js';
@@ -30,6 +30,7 @@ let driver = null, huds = [], mouseSeat = 0, myTeam = 0, lastT = 0, raf = 0, mod
 let padMenu = null;
 let MAP = null;                                  // the built map this match is on
 let worstDeficit = 0;                            // the hole you climbed out of
+let meOutSeen = false;                           // the fallen hint fires once per match
 let colonyNameOf = null;                         // names this match's colonies, set per match
 let lastLaneTap = null;                          // for the touch double-tap send
 let lastResult = null;                           // what the share card describes
@@ -660,6 +661,7 @@ function wireDriver(seatSpecs, netIndex) {
   const cv = initBoard($('#board'), MAP);
   resetParticles();
   worstDeficit = 0;
+  meOutSeen = false;
   huds = [];
   mouseSeat = 0;
   padMenu = null;
@@ -692,6 +694,7 @@ function wireDriver(seatSpecs, netIndex) {
   driver.on('nope', (why) => toast(why));
   driver.on('over', (m) => showResult(m));
   driver.on('emote', (m) => showEmote(m.team, m.e, m.at ?? -1));
+  driver.on('back', (m) => showBack(m.from, m.at));
   buildEmoteBar(seatSpecs[0]?.seat ?? 0);
 
   // a colony can be two people, so name it after everyone holding it rather
@@ -853,6 +856,10 @@ function loop(now) {
   for (let t = 0; t < view.nestHp.length; t++) if (t !== meTeam) best = Math.max(best, view.nestHp[t]);
   worstDeficit = Math.max(worstDeficit, best - view.nestHp[meTeam]);
 
+  if (!meOutSeen && view.nestHp.length > 2 && view.nestOut?.[meTeam]) {
+    meOutSeen = true;
+    showHint(meTeam, 'Fallen. Click a living nest to back them');
+  }
   paintNestBar(view);
   try { setIntensity(Math.min(3, Math.floor(view.units.length / 9))); } catch { /* audio off */ }
 }
@@ -869,6 +876,19 @@ function wireBoardInput(cv) {
 
   cv.onpointerdown = (e) => {
     const w = worldFrom(e);
+    // THE FALLEN'S ONE VERB. A knocked-out colony in a free-for-all can click
+    // a living nest to back it: a pennant in their colour, nothing mechanical.
+    // Checked before everything else because the fallen have no pads to open
+    // and no roads worth aiming.
+    const v = driver?.view?.();
+    const meT = huds[0]?.team ?? 0;
+    if (v?.nestOut?.[meT] && v.nestHp.length > 2) {
+      for (const n of MAP.nests) {
+        if (n.team === meT || v.nestOut[n.team]) continue;
+        if (Math.hypot(w.x - n.x, w.y - n.y) <= n.r + 14) { driver?.back?.(n.team); return; }
+      }
+      return;   // out: nothing below applies to a colony with no roads
+    }
     const pad = nearestPad(w, mySeats());
     if (pad) { openPadMenu(pad, e); return; }
     closePadMenu();

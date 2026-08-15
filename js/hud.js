@@ -301,6 +301,10 @@ export class Hud {
     if (this.trailChip) {
       this.trailChip.classList.toggle('on', lane === 'trail');
       this.trailChip.setAttribute('aria-pressed', String(lane === 'trail'));
+      if (lane === 'trail') {
+        this.trailChip.classList.remove('nudge');
+        try { localStorage.setItem('antraid.knowsTrail', '1'); } catch { /* private mode */ }
+      }
     }
   }
 
@@ -315,7 +319,21 @@ export class Hud {
 
   cast(id) { this.onCmd(this.seat, { kind: 'power', power: id, lane: this.lane }); }
 
-  mark() { this.onCmd(this.seat, { kind: 'mark', lane: this.lane }); }
+  mark() {
+    this.onCmd(this.seat, { kind: 'mark', lane: this.lane });
+    // THE ONE NUDGE THIS GAME GIVES. Somebody hand-marking road after road has
+    // learned half the system and nobody has told them the other half exists.
+    // After the third manual mark the trail chip pulses, once per browser,
+    // until the first time they aim at it. A tutorial would be more; this game
+    // teaches by tooltip and this is the only mechanic buried enough to need
+    // a pointing finger.
+    if (this.lane !== 'trail' && this.trailChip) {
+      this.manualMarks = (this.manualMarks || 0) + 1;
+      let seen = false;
+      try { seen = localStorage.getItem('antraid.knowsTrail') === '1'; } catch { /* private mode */ }
+      if (this.manualMarks >= 3 && !seen) this.trailChip.classList.add('nudge');
+    }
+  }
   fork() { this.onCmd(this.seat, { kind: 'fork', lane: this.lane }); }
 
   upgrade(id) { this.onCmd(this.seat, { kind: 'upgrade', unit: id }); }
@@ -390,9 +408,13 @@ export class Hud {
       const cd = p.c[id] || 0;
       const cdEl = el.querySelector('.cd');
       cdEl.classList.toggle('hidden', cd <= 0);
-      el.setAttribute('aria-disabled', String(p.s < POWERS[id].cost || cd > 0));
+      // a trail-following power has nothing to ride without a trail, and greys
+      // out the same way the command would refuse
+      const needsTrail = POWERS[id].followsTrail
+        && !this.lanes.some((L) => ((view.pher?.[this.team] || [])[L.id] || 0) > PHEROMONE.reinforceCap);
+      el.setAttribute('aria-disabled', String(p.s < POWERS[id].cost || cd > 0 || needsTrail));
       if (cd > 0) cdEl.textContent = cd;
-      el.classList.toggle('broke', p.s < POWERS[id].cost || cd > 0);
+      el.classList.toggle('broke', p.s < POWERS[id].cost || cd > 0 || needsTrail);
     }
 
     const taken = new Set(view.defs.filter((d) => d.owner === meIndex).map((d) => d.pad));

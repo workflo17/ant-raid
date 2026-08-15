@@ -23,7 +23,14 @@ export const TUNING = {
   // Her HP is not the lever: cutting all four queens by a third moved match
   // length 0.26 of a minute. Retune this whenever the economy or the roster
   // changes: node tools/balance.js 8 normal normal all
-  nestHp: 330,
+  //
+  // 330 to 310 when the flat-eco table and trail-riding Rally settled: the
+  // richer game and the rarer, scaled surge together left duels at 5.2 to 5.4
+  // minutes against a 4-to-5 band, and two rounds of nibbling at bot gates and
+  // the rally cooldown bought back a tenth each. The nest was the honest lever
+  // left. At 310: 4.9 minutes, 26 percent breach, splits pooled dead even over
+  // four seed families (64-64).
+  nestHp: 310,
   startSugar: 260,
   // Passive income is now a trickle, not the engine. It exists so a player who
   // loses everything can still act; growth is supposed to come from raiding.
@@ -128,6 +135,14 @@ export const TUNING = {
   // 3.0, and the win rate stops moving. If co-op ever has to be harder than
   // this, the bot needs to act more often, not to be paid more.
   //
+  // ...AND AGAIN AT 2.9 after nestHp went 310 and Rally started riding the
+  // trail: softer nests help the side with more total offence, which is the
+  // pair, and 2.6 slid to 69 percent. The sweep at 310 reads 2.7 at 66, 2.8 at
+  // 59, 2.9 at 53, and 2.9 pools to exactly 50 percent over families 4000 and
+  // 9000. The bot banks 2800 there, which is brushing the saturation ceiling
+  // the note below describes: if co-op ever drifts again, the next move is a
+  // faster-thinking bot, not a richer one.
+  //
   // RE-SWEPT AT 2.6 after the flat-eco patch. The richer eco table and the
   // reactive defence picks helped the handicapped bot more than the pair, and
   // 2.8 slid to 42% pooled over two seed families. The plateau moved: 2.2 is
@@ -135,7 +150,7 @@ export const TUNING = {
   // family-to-family swing is ±10 points, so treat any single-family reading
   // of this number as weather. Re-sweep with tools/coop.js --sweep after any
   // economy or bot change, the same rule as nestHp.
-  aiIncomeMul: { easy: 0.85, normal: 1.0, hard: 1.25, coop: 2.6 },
+  aiIncomeMul: { easy: 0.85, normal: 1.0, hard: 1.25, coop: 2.9 },
 };
 
 /**

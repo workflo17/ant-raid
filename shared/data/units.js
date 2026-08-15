@@ -127,9 +127,17 @@ export const DEFENDERS = {
 
 export const POWERS = {
   rally: {
-    name: 'Rally', hotkey: 'Q', icon: '▶', cost: 140, cooldown: 18, duration: 6,
+    name: 'Rally', hotkey: 'Q', icon: '▶', cost: 140, cooldown: 14, duration: 6,
     speedMul: 1.45, damageMul: 1.25,
-    tagline: 'Your ants in one lane charge: faster, hitting harder, for 6s.',
+    // Rally FOLLOWS THE TRAIL and scales with it, and that is the whole redesign:
+    // the old lane-targeted version was cast 635 times in a 24-match audit, on
+    // cooldown, into the push lane, every time, by every player worth measuring.
+    // A button that is always right is a tax. Tied to the trail it asks two real
+    // questions: is my trail where the surge should go, and is it built enough
+    // to be worth cashing the cooldown, since a rally on a half-built trail is a
+    // half rally. At full strength the numbers above are exactly what they were.
+    followsTrail: true,
+    tagline: 'Your colony surges down its trail for 6s, as hard as the trail is strong.',
   },
   acidrain: {
     name: 'Acid Rain', hotkey: 'W', icon: '☂', cost: 190, cooldown: 22, duration: 2,

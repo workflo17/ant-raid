@@ -158,7 +158,42 @@ export function showEmote(team, index, at = -1) {
   const target = at >= 0 && at !== team && MAP.nests[at] ? at : -1;
   bubbles[team] = { e, target, until: time + EMOTE_SHOW, born: time };
 }
-export function clearEmotes() { bubbles = []; }
+export function clearEmotes() { bubbles = []; backs = {}; }
+
+// ------------------------------------------------ backing, the fallen's verb
+// A knocked-out colony plants its pennant on a survivor's nest. Render state
+// only, like the emotes: the sim never knows, which is exactly what keeps it
+// from being an alliance mechanic. `backs[from] = at`, latest wins.
+let backs = {};
+export function showBack(from, at) {
+  if (!MAP || !MAP.nests[from] || !MAP.nests[at]) return;
+  backs[from] = at;
+}
+/** A local, unwired bubble, for the one hint the fallen get. */
+export function showHint(team, text) {
+  if (!MAP || !MAP.nests[team]) return;
+  bubbles[team] = { e: { text }, target: -1, until: time + EMOTE_SHOW * 1.6, born: time };
+}
+
+function drawBacks() {
+  const froms = Object.keys(backs);
+  for (const f of froms) {
+    const from = Number(f);
+    const n = MAP.nests[backs[f]];
+    if (!n) continue;
+    const T = teamTint(from);
+    // a little pennant per backer, planted round the nest rim so several can
+    // stand together; the colour IS the signature, same rule as everywhere
+    const x = n.x - n.r * 0.6 + (from % 3) * 13;
+    const y = n.y - n.r - 8 - Math.floor(from / 3) * 16;
+    c.save();
+    c.strokeStyle = INK; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - 14); c.stroke();
+    c.fillStyle = T.accent;
+    c.beginPath(); c.moveTo(x, y - 14); c.lineTo(x + 11, y - 10.5); c.lineTo(x, y - 7); c.closePath(); c.fill();
+    c.restore();
+  }
+}
 
 function drawEmotes() {
   for (let team = 0; team < bubbles.length; team++) {
@@ -365,6 +400,7 @@ export function draw(view, dt, ui) {
   stampFootfall(view, dt);
   updateParticles(dt);
   drawParticles(c);
+  drawBacks();
   drawEmotes();
 
   if (ui?.aimLane != null) drawAim(ui.aimLane, ui.aimTeam ?? 0, view);

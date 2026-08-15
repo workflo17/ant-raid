@@ -938,3 +938,13 @@ input {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+/* the one teaching nudge: the trail chip waves after three hand-laid marks */
+.trail-chip.nudge { animation: trail-nudge 1.1s ease-in-out infinite; }
+@keyframes trail-nudge {
+  0%, 100% { transform: translateY(0); box-shadow: none; }
+  50% { transform: translateY(-3px); box-shadow: 0 0 0 3px var(--honey); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trail-chip.nudge { animation: none; box-shadow: 0 0 0 3px var(--honey); }
+}

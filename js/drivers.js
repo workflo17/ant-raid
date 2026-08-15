@@ -121,6 +121,13 @@ export class LocalDriver extends Emitter {
   }
 
   /** No socket to go round, so it comes straight back to the same page. */
+  back(at, seat = 0) {
+    const from = this.sim.players[seat]?.team ?? 0;
+    if (!this.sim.out[from] || !Number.isInteger(at) || at === from
+      || at < 0 || at >= this.sim.teamCount || this.sim.out[at]) return;
+    this.emit('back', { from, at });
+  }
+
   emote(seat, e, at) {
     const p = this.sim.players[seat];
     const team = p ? p.team : 0;
@@ -216,6 +223,9 @@ export class NetDriver extends Emitter {
       case 'emote':
         this.emit('emote', m);
         break;
+      case 'back':
+        this.emit('back', m);
+        break;
       case 'pong':
         this.ping = Math.round(performance.now() - m.id);
         break;
@@ -233,6 +243,7 @@ export class NetDriver extends Emitter {
   startMatch() { this.tx({ t: 'start' }); }
   rematch() { this.tx({ t: 'rematch' }); }
   emote(seat, e, at) { this.tx(Number.isInteger(at) ? { t: 'emote', e, at } : { t: 'emote', e }); }
+  back(at) { this.tx({ t: 'back', at }); }
 
   /** `seat` is ignored online: the server only ever lets you move your own colony. */
   send(seat, cmd) { this.tx({ t: 'cmd', c: cmd }); return { ok: true }; }

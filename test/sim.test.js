@@ -1083,9 +1083,12 @@ test('a colony can only aim a power down its own roads, and walls its own half',
   const sim = ring(4);
   const mine = sim.map.lanesFor(2);
   const notMine = sim.map.lanes.find((l) => !l.ends.includes(2)).id;
-  for (const power of ['rally', 'acidrain', 'barricade']) {
+  for (const power of ['acidrain', 'barricade']) {
     assert.match(sim.command('P2', { kind: 'power', power, lane: notMine }).why, /does not run from your nest/);
   }
+  // rally does not take a lane at all any more, so a foreign one is simply
+  // ignored: without a trail it refuses on that instead
+  assert.match(sim.command('P2', { kind: 'power', power: 'rally', lane: notMine }).why, /follows your trail/);
   assert.match(sim.command('P2', { kind: 'mark', lane: notMine }).why, /does not run from your nest/);
 
   // a pebble wall goes in YOUR half, whichever end of the road you walk in from
@@ -1098,6 +1101,34 @@ test('a colony can only aim a power down its own roads, and walls its own half',
     assert.ok(fromMe < sim.map.laneLen[lane] * 0.5,
       `colony 2 walled the far end of road ${lane} (${fromMe.toFixed(0)} of ${sim.map.laneLen[lane].toFixed(0)})`);
   }
+});
+
+test('rally follows the trail and is only as hard as the trail it rides', () => {
+  const sim = duel();
+  const a = sim.playerById('A');
+  a.sugar = 9999;
+
+  // no trail: no rally, whatever lane the client thinks it is aiming at
+  assert.match(sim.command('A', { kind: 'power', power: 'rally', lane: 1 }).why, /follows your trail/);
+
+  // a single mark makes a WEAK trail; the rally lands on it at that strength
+  sim.command('A', { kind: 'mark', lane: 2 });
+  const weak = sim.pher[0][2];
+  assert.equal(sim.command('A', { kind: 'power', power: 'rally' }).ok, true);
+  assert.ok(sim.rallies[0][2] > sim.t, 'the rally did not land on the trail road');
+  assert.equal(sim.rallies[0][0] > sim.t, false, 'the rally leaked onto another road');
+  assert.ok(Math.abs(sim.rallyPow[0][2] - weak) < 1e-9, `power ${sim.rallyPow[0][2]} != trail ${weak}`);
+
+  // built to full, the surge is the full one, and re-marking mid-rally does
+  // not retune a charge that is already running
+  a.powerCd.rally = 0;
+  for (let i = 0; i < 4; i++) { a.markCd = 0; sim.command('A', { kind: 'mark', lane: 2 }); }
+  assert.equal(sim.pher[0][2], 1);
+  assert.equal(sim.command('A', { kind: 'power', power: 'rally' }).ok, true);
+  assert.equal(sim.rallyPow[0][2], 1);
+  a.markCd = 0;
+  sim.command('A', { kind: 'mark', lane: 0 });   // collapse the trail elsewhere
+  assert.equal(sim.rallyPow[0][2], 1, 'moving the trail retuned a running rally');
 });
 
 test('a free-for-all starts bleeding sooner than a duel does', () => {

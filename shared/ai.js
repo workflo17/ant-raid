@@ -197,9 +197,14 @@ export class AiBrain {
       const k = RAIDER_IDS[u.t];
       counts[k] = (counts[k] || 0) + 1;
     }
-    const pick = me.roster
+    // any of its three most-fielded species, not strictly the top one: sorting
+    // by count alone made 72 of 118 audited caste purchases Worker upgrades,
+    // because the cheapest species is always the most fielded
+    const ranked = me.roster
       .filter((k) => (me.castes[k] || 0) < CASTE_TIERS && (counts[k] || 0) >= 2)
-      .sort((a, b) => (counts[b] || 0) - (counts[a] || 0))[0];
+      .sort((a, b) => (counts[b] || 0) - (counts[a] || 0))
+      .slice(0, 3);
+    const pick = ranked[Math.floor(this.rand() * ranked.length) % Math.max(1, ranked.length)];
     if (!pick) return;
     const step = CASTES[pick][me.castes[pick] || 0];
     // A flat 700 floor plus a 400 buffer sat above anything the bot ever banks,
@@ -417,19 +422,22 @@ export class AiBrain {
         if (best >= 0 && bestN >= 4) this.cmd({ kind: 'power', power: 'acidrain', lane: best });
 
       } else if (key === 'rally') {
-        // push the lane where my own column is deepest into their half
-        let best = -1, bestN = 0;
-        for (const l of this.myLanes) {
+        // Rally follows the trail now, so the question is not which lane but
+        // whether THIS is the moment: a built trail (a weak one wastes the
+        // cooldown, the surge scales with strength) and a real column already
+        // deep on it. The old version scanned every lane and cast on cooldown,
+        // 635 times in the audit, which is exactly the habit the redesign kills.
+        const t = this.sim.trailLanes(me.team);
+        if (t.length && this.sim.pher[me.team][t[0]] >= 0.75) {
+          const l = t[0];
           const L = this.map.laneLen[l], into = this.dirOn(l);
-          let n = 0;
+          let deep = 0;
           for (const u of this.sim.units) {
             if (u.team !== me.team || u.lane !== l) continue;
-            const deep = into > 0 ? u.d > L * 0.45 : u.d < L * 0.55;
-            if (deep) n++;
+            if (into > 0 ? u.d > L * 0.45 : u.d < L * 0.55) deep++;
           }
-          if (n > bestN) { bestN = n; best = l; }
+          if (deep >= 3) this.cmd({ kind: 'power', power: 'rally' });
         }
-        if (best >= 0 && bestN >= 3) this.cmd({ kind: 'power', power: 'rally', lane: best });
 
       } else if (key === 'barricade') {
         const pressure = this._pressure(me.team);

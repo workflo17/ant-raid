@@ -75,6 +75,9 @@ export class Sim {
     this.sudden = suddenDeathFor(this.teamCount);
     // rallies[team][lane] and rains[team][lane] hold an expiry time
     this.rallies = perTeam(0);
+    // ...and how strong the trail was at the moment of the rally, 0 to 1,
+    // because a rally is only as hard as the trail it rode in on
+    this.rallyPow = perTeam(0);
     this.rains = perTeam(0);
     // pher[team][lane] is trail strength, 0 to 1. Unlike the two above it is a
     // level rather than a deadline: it is topped up and it drains.
@@ -588,9 +591,19 @@ export class Sim {
   _power(p, cmd) {
     if (!isPower(cmd.power)) return { ok: false, why: 'no such power' };
     const def = POWERS[cmd.power];
-    const followed = this._trailLane(p, cmd);
-    if (followed && followed.ok === false) return followed;
-    const lane = followed ? followed.lane : cmd.lane | 0;
+    // A trail-following power ignores the aimed lane outright: the colony
+    // surges down the road IT declared, which is what makes the cast a
+    // decision about the trail rather than a button pressed on cooldown.
+    let lane;
+    if (def.followsTrail) {
+      const t = this.trailLanes(p.team);
+      if (!t.length) return { ok: false, why: `${def.name} follows your trail, lay one first` };
+      lane = t[0];
+    } else {
+      const followed = this._trailLane(p, cmd);
+      if (followed && followed.ok === false) return followed;
+      lane = followed ? followed.lane : cmd.lane | 0;
+    }
     if (lane < 0 || lane >= this.map.lanes.length) return { ok: false, why: 'no such lane' };
     // A power lands on ONE ROAD, and the roads you may act on are the ones that
     // run from your nest — the same rule `send` and `queen` already apply, and
@@ -609,6 +622,10 @@ export class Sim {
 
     if (cmd.power === 'rally') {
       this.rallies[p.team][lane] = this.t + def.duration;
+      // frozen at cast: the surge is as hard as the trail was when the colony
+      // committed to it, and re-marking mid-rally does not retune a charge
+      // that is already running
+      this.rallyPow[p.team][lane] = this.pher[p.team][lane];
     } else if (cmd.power === 'acidrain') {
       this.rains[p.team][lane] = this.t + def.duration;
     } else if (cmd.power === 'barricade') {
@@ -881,12 +898,15 @@ export class Sim {
       const def = this.statsOf(u);
       const hero = u.kind === 'h';
       const rallied = this.rallies[u.team][u.lane] > this.t;
-      const dmgMul = rallied ? POWERS.rally.damageMul : 1;
+      // scaled by the trail the rally rode in on: a full trail gives exactly
+      // the old numbers, a half-built one gives half the bonus
+      const rPow = rallied ? this.rallyPow[u.team][u.lane] : 0;
+      const dmgMul = 1 + (POWERS.rally.damageMul - 1) * rPow;
       // silk, a rally, an Onslaught and the ground underfoot all pull on the
       // same speed number
       const charging = hero && u.ons > this.t ? QUEENS[queenOfT(u.t)].ability.speedMul : 1;
       const scent = 1 + PHEROMONE.speed * this.pher[u.team][u.lane];
-      const spdMul = (rallied ? POWERS.rally.speedMul : 1) * charging * scent
+      const spdMul = (1 + (POWERS.rally.speedMul - 1) * rPow) * charging * scent
         * u.slowMul * this.map.slowAt(u.x, u.y);
 
       const target = u.target;

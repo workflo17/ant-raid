@@ -550,6 +550,26 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      case 'back': {
+        // A KNOCKED-OUT colony backing a survivor. The one verb the fallen
+        // have, and deliberately not simulation state: a pennant on the backed
+        // nest, nothing more. The living cannot back anybody, which is what
+        // keeps this from being an alliance mechanic wearing a flag.
+        if (!room || !room.sim) return;
+        const seat = room.seatFor(ws);
+        if (!seat) return;
+        const from = room.teamFor(room.seats.indexOf(seat));
+        if (!room.sim.out[from]) return fail(ws, 'only a fallen colony backs somebody');
+        const at = m.at;
+        if (!Number.isInteger(at) || at < 0 || at >= room.sim.teamCount
+          || at === from || room.sim.out[at]) return fail(ws, 'back a colony still standing');
+        const now = Date.now();
+        if (now - (seat.lastEmote || 0) < EMOTE_GAP) return;
+        seat.lastEmote = now;
+        room.broadcast({ t: 'back', from, at });
+        break;
+      }
+
       case 'rematch': {
         if (!room || room.started) return;
         if (room.seats[0]?.ws !== ws) return fail(ws, 'only the host can restart');
