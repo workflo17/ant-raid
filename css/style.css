@@ -567,7 +567,9 @@ input {
   border: 3px solid var(--ink);
   border-radius: 14px;
   box-shadow: 0 6px 0 rgba(43,26,16,.4), 0 20px 44px rgba(0,0,0,.4);
-  touch-action: manipulation;
+  /* none, not manipulation: the board runs its own pinch camera, and the
+     browser must not claim those fingers for page zoom first */
+  touch-action: none;
 }
 
 /* ── the lane rail: the one loud idea. Three chips stacked to match the three

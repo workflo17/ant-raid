@@ -373,6 +373,9 @@ export function setMap(map) {
   T = themeOf(map);
   W = map.width; H = map.height;
   baked = null;
+  // a new board means a new world size, and a camera aimed at the old one
+  // would be looking at a spot that may no longer exist
+  resetCam();
   return map;
 }
 
@@ -398,12 +401,52 @@ function resize() {
   baked = null;
 }
 
+// ------------------------------------------------------------------ camera
+//
+// A phone fits the whole 3:2 board into a 242px band and everything on it is
+// a speck, so touch gets a camera: pinch to zoom, drag to pan, pinch back in
+// to see it all. The camera lives HERE because this file owns both halves of
+// the contract: draw() applies it and worldFrom() inverts it, so input and
+// paint can never disagree about where the world is. At z = 1 every transform
+// below is the identity and desktop behaves as it always has.
+const cam = { x: 0, y: 0, z: 1 };
+const CAM_MAX = 2.75;
+
+function camClamp() {
+  cam.z = Math.min(CAM_MAX, Math.max(1, cam.z));
+  cam.x = Math.min(W - W / cam.z, Math.max(0, cam.x));
+  cam.y = Math.min(H - H / cam.z, Math.max(0, cam.y));
+}
+
+export const camZ = () => cam.z;
+export function resetCam() { cam.x = 0; cam.y = 0; cam.z = 1; }
+
+/** Zoom by `f` about a screen point (client coords), so what is under the fingers stays under them. */
+export function zoomAt(f, clientX, clientY) {
+  const r = cv.getBoundingClientRect();
+  const wx = cam.x + ((clientX - r.left) / r.width) * (W / cam.z);
+  const wy = cam.y + ((clientY - r.top) / r.height) * (H / cam.z);
+  cam.z *= f;
+  camClamp();
+  cam.x = wx - ((clientX - r.left) / r.width) * (W / cam.z);
+  cam.y = wy - ((clientY - r.top) / r.height) * (H / cam.z);
+  camClamp();
+}
+
+/** Pan by a screen-pixel delta, converted to world pixels at the current zoom. */
+export function panScreen(dx, dy) {
+  const r = cv.getBoundingClientRect();
+  cam.x -= (dx / r.width) * (W / cam.z);
+  cam.y -= (dy / r.height) * (H / cam.z);
+  camClamp();
+}
+
 /** Canvas pixel -> world coordinate, for clicks on the board. */
 export function worldFrom(ev) {
   const r = cv.getBoundingClientRect();
   return {
-    x: ((ev.clientX - r.left) / r.width) * W,
-    y: ((ev.clientY - r.top) / r.height) * H,
+    x: cam.x + ((ev.clientX - r.left) / r.width) * (W / cam.z),
+    y: cam.y + ((ev.clientY - r.top) / r.height) * (H / cam.z),
   };
 }
 
@@ -500,7 +543,9 @@ export function draw(view, dt, ui) {
   // the tint cache, so the whole bake goes with it
   if (!baked || bakedFor !== MAP.id || bakedEpoch !== colorEpoch()) bake();
   time += dt;
-  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // the camera is one transform: scale by z, slide by the world offset. At
+  // z = 1 with the offsets clamped to 0 this is exactly the old line.
+  c.setTransform(dpr * cam.z, 0, 0, dpr * cam.z, -cam.x * dpr * cam.z, -cam.y * dpr * cam.z);
   if (shake > 0.05) {
     const a = shakeSeed * 2.3 + time * 47;
     c.translate(Math.sin(a) * shake, Math.cos(a * 1.37) * shake * 0.7);

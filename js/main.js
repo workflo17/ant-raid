@@ -4,7 +4,10 @@ import { LocalDriver, NetDriver } from './drivers.js';
 import { Sim } from '../shared/sim.js';
 import { buildView } from './view.js';
 import { DT } from '../shared/data/board.js';
-import { initBoard, draw, worldFrom, playFx, setHoverPad, tinted, setMap, showEmote, showBack, showHint } from './board.js';
+import {
+  initBoard, draw, worldFrom, playFx, setHoverPad, tinted, setMap, showEmote, showBack, showHint,
+  zoomAt, panScreen, camZ,
+} from './board.js';
 import { paintThumb } from './scenery.js';
 import { recordMatch, recordLine, loadRecord, drawResultCard, shareResult, shareText, bestOther } from './record.js';
 import { Hud } from './hud.js';
@@ -870,6 +873,24 @@ function loop(now) {
 // ---------------------------------------------------------------- board input
 
 function wireBoardInput(cv) {
+  // ── the touch camera ─────────────────────────────────────────────────
+  // On a phone the whole board fits a 242px band and an ant is four pixels,
+  // so touch gets a camera: pinch to zoom about your fingers, drag to pan
+  // while zoomed, pinch back in to see everything. Mouse input never enters
+  // this block, so the desktop game is untouched.
+  //
+  // The tap actions below run on pointerdown, which has already happened by
+  // the time a second finger makes this a pinch, so the pinch CLEANS UP after
+  // that first finger: the pad menu closes and the double-tap arm is dropped.
+  // Aiming a lane is the one thing left standing, and it is harmless.
+  //
+  // Wired ONCE: this function runs at every match start, and the property
+  // handlers below overwrite themselves, but addEventListener stacks, and a
+  // second copy of the pinch would zoom twice per finger move.
+  if (!camWired) {
+    camWired = true;
+    wireCamera(cv);
+  }
   cv.onpointermove = (e) => {
     const w = worldFrom(e);
     setHoverPad(nearestPad(w, null));
@@ -878,7 +899,64 @@ function wireBoardInput(cv) {
   cv.onpointerleave = () => setHoverPad(null);
 
   cv.onpointerdown = (e) => {
-    const w = worldFrom(e);
+    // two fingers down is a pinch, and a zoomed touch resolves on lift instead
+    if (e.pointerType === 'touch' && (camTouches.size > 1 || camZ() > 1.01)) return;
+    boardTap(e);
+  };
+
+  addEventListener('keydown', onKey);
+}
+
+let camWired = false;
+const camTouches = new Map();   // pointerId -> { x, y }
+let camPanned = false;          // this gesture moved: swallow the tap on lift
+
+function wireCamera(cv) {
+  const touches = camTouches;
+  let pinchD = 0;              // finger distance at the last pinch frame
+
+  cv.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    cv.setPointerCapture(e.pointerId);
+    if (touches.size === 2) {
+      const [a, b] = [...touches.values()];
+      pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+      closePadMenu();
+      lastLaneTap = null;
+    }
+    if (touches.size === 1) camPanned = false;
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!touches.has(e.pointerId)) return;
+    const t = touches.get(e.pointerId);
+    const dx = e.clientX - t.x, dy = e.clientY - t.y;
+    t.x = e.clientX; t.y = e.clientY;
+    if (touches.size === 2) {
+      const [a, b] = [...touches.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchD > 0) zoomAt(d / pinchD, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      pinchD = d;
+      camPanned = true;
+    } else if (touches.size === 1 && camZ() > 1.01 && (camPanned || Math.hypot(dx, dy) > 3)) {
+      panScreen(dx, dy);
+      camPanned = true;
+    }
+  });
+  const lift = (e) => {
+    if (!touches.delete(e.pointerId)) return;
+    pinchD = 0;
+    // while zoomed, a tap waits for the lift: a finger going down might have
+    // been the start of a pan, and only the lift knows it never moved
+    if (e.type === 'pointerup' && !camPanned && touches.size === 0 && camZ() > 1.01) boardTap(e);
+  };
+  cv.addEventListener('pointerup', lift);
+  cv.addEventListener('pointercancel', lift);
+}
+
+/** One tap on the board, whatever screen it came from and however zoomed. */
+function boardTap(e) {
+  const w = worldFrom(e);
     // THE FALLEN'S ONE VERB. A knocked-out colony in a free-for-all can click
     // a living nest to back it: a pennant in their colour, nothing mechanical.
     // Checked before everything else because the fallen have no pads to open
@@ -912,9 +990,6 @@ function wireBoardInput(cv) {
       if (d < bestD) { bestD = d; best = l; }
     }
     if (bestD < 90) huds[mouseSeat]?.aim(best);
-  };
-
-  addEventListener('keydown', onKey);
 }
 
 /**
