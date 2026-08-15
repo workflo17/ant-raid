@@ -1,8 +1,13 @@
-/* ===== Ant Raid — picnic-sticker language, carried over from Grubs TD =====
-   ink #2b1a10 · cream #fff3d6 · honey #f5a623
-   New here, because this game has two sides where the TD had one:
-   ember #e2472f is your colony, frost #3d6fd8 is theirs. Every readout that
-   belongs to a colony wears its colour, and nothing else in the UI does. */
+/* ===== Ant Raid — painted-paper language, keyed to the wordmark =====
+   The title art is watercolor on parchment: sienna letters with an umber
+   outline, leaves in sage, amber and rust, soft pigment shadows. The chrome
+   follows it. Surfaces are parchment with a faint wash and grain, edges are
+   painted umber rather than die-cut black, shadows are pigment rather than
+   cardboard, and corners are cut a little unevenly, the way scissors actually
+   cut. Layout metrics are untouched: this is paint, not carpentry.
+   ink #2b1a10 · parchment #f6e9cd · pigment gold #e5a238 · umber #5a3418
+   ember and frost are roles, not colours: every readout that belongs to a
+   colony wears that colony's colour, and nothing else in the UI does. */
 
 @font-face {
   font-family: 'Baloo 2';
@@ -14,21 +19,37 @@
 
 :root {
   --ink: #2b1a10;
-  --cream: #fff3d6;
-  --paper: #f8efd4;
-  --honey: #f5a623;
+  /* the wordmark's parchment, warm and a little rosy, not lemon cream */
+  --cream: #f6e9cd;
+  --paper: #eeddbd;
+  /* pigment gold, picked off the painted leaves */
+  --honey: #e5a238;
   --amber: #8a5400;
+  /* the letters' own browns: umber outlines every surface, sienna is theirs
+     to borrow for headings that want to sound like the title */
+  --line: #5a3418;
+  --sienna: #a5602f;
   --ember: #e2472f;
   --ember-dark: #97240f;
   --frost: #3d6fd8;
   --frost-dark: #1e3f8c;
   --leaf: #63a832;
   --foil: linear-gradient(168deg, #fff3c8 8%, #ffd166 32%, #f5a623 55%, #c97a10 78%, #ffd166 96%);
+  /* paper fibre: a static turbulence grain under the old flecks. Encoded
+     inline so it costs no request and prints identically everywhere. */
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.24 0 0 0 0 0.12 0 0 0 0.055 0'/></filter><rect width='240' height='240' filter='url(%23p)'/></svg>");
   --tex-paper:
     radial-gradient(rgba(43,26,16,.05) 1px, transparent 1.1px),
     radial-gradient(rgba(255,255,255,.6) 1px, transparent 1.15px);
-  --shadow: 0 3px 0 rgba(43,26,16,.35);
-  --rad: 12px;
+  /* watercolor pooling: light gathers at one shoulder, pigment settles at the
+     opposite foot. One wash, reused by every painted surface. */
+  --wash:
+    radial-gradient(120% 90% at 18% 10%, rgba(255,252,244,.55), transparent 55%),
+    radial-gradient(140% 110% at 84% 96%, rgba(90,52,24,.12), transparent 62%);
+  /* pigment shadow, not cardboard: a tight settle and a soft bloom */
+  --shadow: 0 2px 3px rgba(90,52,24,.28), 0 7px 16px rgba(90,52,24,.15);
+  /* hand-cut corners: no two the same, nothing moves */
+  --rad: 13px 11px 14px 10px / 11px 14px 10px 13px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -52,7 +73,9 @@ button {
   -webkit-tap-highlight-color: rgba(245, 166, 35, .35);
 }
 button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
-  outline: 3px solid var(--honey);
+  /* umber, not honey: honey on parchment measured 1.9 to 1, invisible to the
+     people a focus ring exists for. The painted outline reads 9 to 1. */
+  outline: 3px solid var(--line);
   outline-offset: 2px;
 }
 .hidden { display: none !important; }
@@ -103,7 +126,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
   background: var(--cream);
   background-image: var(--tex-paper);
   background-size: 7px 7px, 11px 11px;
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: 20px;
   box-shadow: 0 8px 0 rgba(43,26,16,.4), 0 22px 48px rgba(0,0,0,.55);
   padding: 26px clamp(18px, 4vw, 34px) 20px;
@@ -170,7 +193,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
   background: var(--cream);
   background-image: var(--tex-paper);
   background-size: 7px 7px, 11px 11px;
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: 20px;
   box-shadow: 0 8px 0 rgba(43,26,16,.4), 0 22px 48px rgba(0,0,0,.45);
   padding: 28px clamp(18px, 4vw, 40px) 24px;
@@ -203,7 +226,7 @@ h1, h2, .big-label, .verdict { text-wrap: balance; }
 .name-row .tab-tag { font-size: 12px; font-weight: 700; opacity: .55; white-space: nowrap; }
 input {
   background: #fff;
-  border: 2.5px solid var(--ink);
+  border: 2.5px solid var(--line);
   border-radius: 10px;
   padding: 7px 12px;
   font-weight: 700;
@@ -221,7 +244,7 @@ input {
   text-align: left;
   padding: 14px 18px;
   background: var(--paper);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: var(--rad);
   box-shadow: var(--shadow);
   transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
@@ -238,7 +261,7 @@ input {
 
 .pill {
   padding: 9px 20px;
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: 999px;
   font-weight: 800;
   background: var(--paper);
@@ -252,9 +275,9 @@ input {
 .pill.wide { display: block; width: 100%; margin: 14px 0 8px; padding: 12px; font-size: 18px; }
 .pill:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 
-.seg { display: inline-flex; border: 3px solid var(--ink); border-radius: 999px; overflow: hidden; background: var(--paper); }
+.seg { display: inline-flex; border: 3px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--paper); }
 .seg-btn { padding: 7px 16px; font-weight: 700; font-size: 14px; }
-.seg-btn + .seg-btn { border-left: 2.5px solid var(--ink); }
+.seg-btn + .seg-btn { border-left: 2.5px solid var(--line); }
 .seg-btn.on { background: var(--honey); }
 
 /* ── the board picker: real paintings of each map, not swatches ── */
@@ -266,7 +289,7 @@ input {
   width: 148px;
   padding: 5px 5px 6px;
   background: var(--paper);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: var(--rad);
   box-shadow: var(--shadow);
   text-align: left;
@@ -276,7 +299,7 @@ input {
 .map-card.on { background: var(--honey); transform: translateY(-3px); }
 .map-card canvas {
   display: block; width: 100%; height: auto;
-  border: 2px solid var(--ink); border-radius: 6px;
+  border: 2px solid var(--line); border-radius: 6px;
   background: #2b1a10;
 }
 .map-card .mn { display: block; font-size: 13px; font-weight: 800; line-height: 1.15; margin-top: 4px; }
@@ -299,7 +322,7 @@ input {
   width: 92px;
   padding: 4px 4px 5px;
   background: var(--paper);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: var(--rad);
   box-shadow: var(--shadow);
   opacity: .5;
@@ -326,7 +349,7 @@ input {
   width: 104px;
   padding: 4px 4px 6px;
   background: var(--paper);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: var(--rad);
   box-shadow: var(--shadow);
   opacity: .55;
@@ -348,7 +371,7 @@ input {
   display: grid; gap: 3px; justify-items: center;
   width: 76px; padding: 5px 4px 6px;
   background: var(--paper);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: var(--rad);
   box-shadow: var(--shadow);
   opacity: .55;
@@ -358,7 +381,7 @@ input {
 .cpick.on { opacity: 1; transform: translateY(-3px); }
 .cpick .sw {
   width: 34px; height: 34px; border-radius: 50%;
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   background: radial-gradient(circle at 34% 30%, var(--swatch-ring), var(--swatch) 62%);
 }
 .cpick .cn { font-size: 11px; font-weight: 800; }
@@ -383,7 +406,7 @@ input {
 .seat .packed { display: flex; gap: 3px; margin-left: 8px; }
 .seat .packed i {
   width: 9px; height: 9px; border-radius: 50%;
-  border: 1.5px solid var(--ink); display: block;
+  border: 1.5px solid var(--line); display: block;
 }
 
 /* ───────────────────────────── lobby ───────────────────────────── */
@@ -407,7 +430,7 @@ input {
 }
 .reach::before {
   content: ''; width: 8px; height: 8px; border-radius: 50%;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--line);
 }
 .reach.public { color: var(--leaf-dark, #3f7a22); }
 .reach.public::before { background: var(--leaf); }
@@ -434,10 +457,10 @@ input {
 .seats { list-style: none; display: grid; gap: 8px; margin: 16px 0; }
 .seat {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; border: 3px solid var(--ink); border-radius: var(--rad);
+  padding: 10px 14px; border: 3px solid var(--line); border-radius: var(--rad);
   background: var(--paper); font-weight: 700; text-align: left;
 }
-.seat .dot { width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid var(--ink); flex: none; }
+.seat .dot { width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid var(--line); flex: none; }
 .seat.t0 .dot { background: var(--ember); }
 .seat.t1 .dot { background: var(--frost); }
 .seat .tag { margin-left: auto; font-size: 12px; opacity: .6; font-weight: 700; }
@@ -479,7 +502,7 @@ input {
   align-items: center;
   gap: clamp(8px, 2vw, 22px);
   background: var(--cream);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: 14px;
   padding: 7px 14px;
   box-shadow: var(--shadow);
@@ -496,7 +519,7 @@ input {
 }
 .nest .bar {
   flex: 1; min-width: 60px; height: 17px;
-  background: #e6d8b6; border: 2.5px solid var(--ink); border-radius: 999px; overflow: hidden;
+  background: #e6d8b6; border: 2.5px solid var(--line); border-radius: 999px; overflow: hidden;
 }
 .nest .bar i {
   display: block; height: 100%; width: 100%;
@@ -564,7 +587,7 @@ input {
 #board {
   max-width: 100%; max-height: 100%;
   aspect-ratio: 3 / 2;
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 6px 0 rgba(43,26,16,.4), 0 20px 44px rgba(0,0,0,.4);
   /* none, not manipulation: the board runs its own pinch camera, and the
@@ -581,7 +604,7 @@ input {
   display: grid; gap: 3px;
   padding: 8px 9px;
   background: var(--cream);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: var(--rad);
   box-shadow: var(--shadow);
   text-align: left;
@@ -593,7 +616,7 @@ input {
 .lane-name { font-size: 14px; font-weight: 800; line-height: 1.05; }
 /* pressure: ember grows from the left edge, frost from the right, so the chip
    reads like a tug-of-war for that road */
-.lane-press { position: relative; height: 9px; background: #e6d8b6; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+.lane-press { position: relative; height: 9px; background: #e6d8b6; border: 2px solid var(--line); border-radius: 999px; overflow: hidden; }
 .lane-press i, .lane-press b { position: absolute; top: 0; bottom: 0; display: block; }
 .lane-press i { left: 0; background: var(--ember); }
 .lane-press b { right: 0; background: var(--frost); }
@@ -632,7 +655,7 @@ input {
   align-items: center;
   gap: clamp(8px, 1.6vw, 18px);
   background: var(--cream);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: 14px;
   padding: 8px 12px;
   box-shadow: var(--shadow);
@@ -665,7 +688,7 @@ input {
   display: grid; gap: 1px;
   padding: 5px 4px 4px;
   background: var(--paper);
-  border: 2.5px solid var(--ink);
+  border: 2.5px solid var(--line);
   border-radius: 10px;
   text-align: center;
   transition: transform .1s ease, background .1s ease, opacity .1s ease;
@@ -678,7 +701,7 @@ input {
   display: flex; align-items: center; justify-content: center; gap: 3px;
   padding: 2px 0 3px;
   background: var(--paper);
-  border: 2.5px solid var(--ink);
+  border: 2.5px solid var(--line);
   border-radius: 8px;
   font-size: 11px; font-weight: 800;
   color: var(--leaf-dark, #3f7a22);
@@ -691,7 +714,7 @@ input {
 .pips { position: absolute; top: 3px; right: 4px; display: flex; gap: 2px; }
 .pips i {
   width: 5px; height: 5px; border-radius: 50%;
-  border: 1.5px solid var(--ink); background: transparent; display: block;
+  border: 1.5px solid var(--line); background: transparent; display: block;
 }
 .pips i.on { background: var(--leaf, #63a832); }
 .card .cn { font-size: 11px; font-weight: 800; line-height: 1.05; }
@@ -711,7 +734,7 @@ input {
   width: 54px; height: 54px;
   display: grid; place-items: center; align-content: center; gap: 0;
   background: var(--paper);
-  border: 2.5px solid var(--ink);
+  border: 2.5px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -737,7 +760,7 @@ input {
   gap: 2px 6px;
   padding: 4px 6px;
   background: var(--paper);
-  border: 2.5px solid var(--ink);
+  border: 2.5px solid var(--line);
   border-radius: 10px;
 }
 .queen .qart { grid-row: 1 / 3; width: 42px; height: 42px; display: block; }
@@ -757,7 +780,7 @@ input {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   padding: 3px 8px;
   background: var(--cream);
-  border: 2.5px solid var(--ink);
+  border: 2.5px solid var(--line);
   border-radius: 8px;
   font-size: 11px; font-weight: 800; white-space: nowrap;
 }
@@ -771,7 +794,7 @@ input {
   width: 48px; height: 48px;
   display: grid; place-items: center; align-content: center;
   background: var(--cream);
-  border: 2.5px solid var(--ink);
+  border: 2.5px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -803,7 +826,7 @@ input {
   display: flex; align-items: center; gap: 4px;
   padding: 3px 8px;
   background: rgba(248,239,212,.86);
-  border: 2px solid var(--ink);
+  border: 2px solid var(--line);
   border-radius: 999px;
   font-size: 11px; font-weight: 800;
   opacity: .7;
@@ -845,7 +868,7 @@ input {
   grid-template-columns: repeat(4, 1fr);
   padding: 8px;
   background: var(--cream);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--line);
   border-radius: var(--rad);
   box-shadow: 0 6px 0 rgba(43,26,16,.4), 0 14px 30px rgba(0,0,0,.4);
   z-index: 5;
@@ -869,7 +892,7 @@ input {
 .result-card {
   display: block; width: 100%; height: auto;
   margin: 14px 0 6px;
-  border: 3px solid var(--ink); border-radius: var(--rad);
+  border: 3px solid var(--line); border-radius: var(--rad);
   box-shadow: var(--shadow);
 }
 .over-actions { display: flex; gap: 8px; margin: 12px 0 6px; }
@@ -970,7 +993,7 @@ input {
 .modes .big-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .modes .big-n {
   font-size: 11px; font-weight: 800; white-space: nowrap;
-  padding: 2px 8px; border: 2px solid var(--ink); border-radius: 999px;
+  padding: 2px 8px; border: 2px solid var(--line); border-radius: 999px;
   background: rgba(255,255,255,.55); opacity: .85;
 }
 .modes .big-label { font-size: 17px; }
@@ -993,3 +1016,23 @@ input {
 
 /* the painted wordmark: generated art, feathered onto the paper card */
 .logo img { display: block; width: min(100%, 520px); height: auto; margin: 0 auto; }
+
+/* ─────────────────────── the painted-surface pass ───────────────────────
+   Every interactive surface is painted, not printed: the shared wash pools
+   pigment at one corner and light at the other, and the grain is the paper
+   showing through. Appended last so it layers over each class's own
+   `background:` shorthand without touching a single layout rule. The state
+   selectors are here too, because `.lane-chip.on { background: var(--honey) }`
+   is a shorthand and would otherwise wipe the paint off exactly the buttons
+   that are lit. */
+.pill, .card, .slot .card, .lane-chip, .em, .up, .pw, .qab, .qgo,
+.seg-btn, .map-card, .pack, .qpick, .cpick, .padmenu, .toast,
+.title-card, .intro-plate {
+  background-image: var(--wash), var(--grain);
+  background-size: 100% 100%, 240px 240px;
+}
+.pill.go, .seg-btn.on, .map-card.on, .pack.on, .qpick.on, .cpick.on,
+.lane-chip.on, .nestbar.many .nest.mine {
+  background-image: var(--wash), var(--grain);
+  background-size: 100% 100%, 240px 240px;
+}
