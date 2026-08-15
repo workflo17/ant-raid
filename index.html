@@ -58,26 +58,10 @@
              autocomplete="off" spellcheck="false" enterkeyhint="done">
     </div>
 
-    <div class="board-pick">
-      <span class="row-label">Board</span>
-      <div class="maps" id="map-strip"></div>
-    </div>
-
-    <div class="board-pick">
-      <span class="row-label">What you pack <em id="pack-count">0 of 5</em></span>
-      <div class="packs" id="pack-strip"></div>
-    </div>
-
-    <div class="board-pick">
-      <span class="row-label">Your queen <em>one hero ant, she levels on kills</em></span>
-      <div class="packs queens" id="queen-strip"></div>
-    </div>
-
-    <div class="board-pick">
-      <span class="row-label">Colony colour</span>
-      <div class="colors" id="color-strip"></div>
-    </div>
-
+    <!-- MODE FIRST. The identity pickers below are set-once choices that
+         persist between visits; which way you want to play is the decision a
+         player makes every single time, so it sits where the eye lands rather
+         than under four rows of loadout. -->
     <div class="board-pick">
       <span class="row-label">How do you want to play?</span>
     </div>
@@ -133,6 +117,26 @@
       </div>
       <button class="pill go" id="solo-go">Start the raid</button>
       <button class="pill quiet" id="solo-cancel">Back</button>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">Board</span>
+      <div class="maps" id="map-strip"></div>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">What you pack <em id="pack-count">0 of 5</em></span>
+      <div class="packs" id="pack-strip"></div>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">Your queen <em>one hero ant, she levels on kills</em></span>
+      <div class="packs queens" id="queen-strip"></div>
+    </div>
+
+    <div class="board-pick">
+      <span class="row-label">Colony colour</span>
+      <div class="colors" id="color-strip"></div>
     </div>
 
     <p class="record" id="record-line"></p>
