@@ -958,3 +958,16 @@ input {
 }
 .modes .big-label { font-size: 17px; }
 .join-strip { display: flex; justify-content: center; margin-top: 12px; }
+
+/* ─────────────────────────── mobile touch pass ───────────────────────────
+   Measured at 375x812, not guessed: the emotebar sat on top of the nest bar
+   (both pinned to the top-left corner), and fifteen tap targets came in under
+   40px, the practical floor for a thumb. The band between the nest bar and
+   the board is empty on a phone, so the emotes live there. */
+@media (max-width: 760px) {
+  .emotebar { top: 58px; }
+  .em { padding: 8px 9px; min-height: 36px; }
+  .em .eg { font-size: 16px; }
+  .up { min-height: 40px; }
+  .qgo { min-height: 40px; }
+}
