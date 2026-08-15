@@ -98,8 +98,8 @@ one board peaked at 201 ants, and a frame at that count costs enough to drop
 well under 60fps.
 
 Expect a scrappier game than 1v1. Twice as many raiders meet in the lanes, so
-far more of them die there: about 15% reach a nest against 32% in a duel.
-Matches still land around five minutes.
+far more of them die on the way and far fewer reach a nest. Matches still land
+around five minutes.
 
 ### Playing with someone in the same house
 
@@ -143,9 +143,10 @@ For something that stays up without your PC on, deploy it once: see
 
 ## How a match goes
 
-**Raiding is your economy.** Every raider you send permanently raises your income,
-and cheap ants pay best per sugar: an Army Ant costs 130 and returns +1.65/second,
-a Majoress costs 420 and returns +0.60. Passive income is a trickle (10 rising to
+**Raiding is your economy.** Every raider you send permanently raises your income:
+an Army Ant costs 130 and returns +1.65/second, a Majoress costs 420 and returns
++4.40. Income per sugar is nearly flat across the roster, so the fight decides
+what you buy, not the interest rate. Passive income is a trickle (10 rising to
 18) that exists only so a wiped-out colony can still act. Sitting on your hands
 earns you almost nothing.
 
@@ -168,13 +169,16 @@ Seven to choose five from:
 
 | | Cost | Income | What it is for |
 |---|---|---|---|
-| Worker | 60 | +0.95/s | Two per purchase. The best income per sugar in the game. |
-| Army Ant | 130 | +1.65/s | Three, fast, made of paper. The fastest way to grow your income. |
-| Trap-Jaw | 200 | +1.40/s | Walks into a lane fight and keeps walking. Your front rank. |
-| Exploder | 170 | +0.80/s | Detonates on its first hit. Clears a column or cracks a pad. |
-| Weaver | 190 | +1.00/s | Silk from the back rank. Everything it touches crawls. |
-| Acid Archer | 240 | +1.10/s | Outranges the pads. The answer to a lane you cannot walk into. |
-| Majoress | 420 | +0.60/s | Enormous and armoured, a 30-point bite. Pays you almost nothing. |
+| Worker | 60 | +0.72/s | Two per purchase. Cheap bodies, quick income. |
+| Army Ant | 130 | +1.65/s | Three, fast, made of paper. The best income per sugar in the game. |
+| Trap-Jaw | 200 | +2.30/s | Walks into a lane fight and keeps walking. Your front rank. |
+| Exploder | 170 | +1.90/s | Detonates on its first hit. Clears a column or cracks a pad. |
+| Weaver | 190 | +2.10/s | Silk from the back rank. Everything it touches crawls. |
+| Acid Archer | 240 | +2.60/s | Outranges the pads. The answer to a lane you cannot walk into. |
+| Majoress | 420 | +4.40/s | Enormous and armoured, a 30-point bite, and she pays her way. |
+
+Income per sugar is nearly flat across the seven, a mild premium on the cheap
+ones. Buy for the fight you are in, not for the interest rate.
 
 One rule matters more than the rest: **melee raiders run straight past defenders**, taking fire
 the whole way. Only the Archer, Weaver, Exploder and Majoress will stop and shoot
@@ -210,9 +214,9 @@ the road and holds there, inside their pad line, killing what comes past. She co
 gone for thirty seconds or more, then comes back with every level she earned.
 
 She levels on kills she helped land, up to five. Levels make her bigger and harder,
-and level 3 unlocks her ability, which is the real difference between the four:
+and level 2 unlocks her ability, which is the real difference between the four:
 
-| | | Ability, at level 3 |
+| | | Ability, at level 2 |
 |---|---|---|
 | Warqueen | Heavy, armoured, walks at the front | **Onslaught**: for 6s every bite she lands craters the ground, and she charges |
 | Silkqueen | Spins from the back rank, outranges a pad | **Snare**: every enemy near her is webbed to a crawl for 4s |
@@ -222,11 +226,23 @@ and level 3 unlocks her ability, which is the real difference between the four:
 You can call her onto a different road while she is out of a fight and has not yet
 reached their gate. Past that she has to fight her way out of it.
 
-**Scent trails** are the small thing to do between purchases. Marking a road costs 30
-sugar and lays pheromone on it; your ants move faster along it, up to a quarter
-faster at full strength. Your own traffic keeps a trail warm, but only to about a
-third of the way: traffic holds a trail, marking builds one. Walk away from a road
-and it goes cold in half a minute. Each colony's trail hugs its own edge of the road,
+**Scent trails are how a colony speaks.** Marking a road costs 30 sugar, lays
+pheromone on it, and your ants move faster along it, up to a quarter faster at
+full strength. One rule carries the whole system: **a colony holds one trail**.
+Marking a different road pulls the old one back down to what traffic alone can
+hold, so a mark is a declaration of where the colony is going, and changing
+your mind costs the trail you had built.
+
+The trail is also an order. The rail has a **Follow the trail** chip (`T`):
+aimed there, everything you buy walks the trail without you naming a road, so
+one mark re-aims the whole colony. **Fork** (`F`) splits the trail toward the
+aimed road: both branches top out lower than a single committed trail, and
+sends that follow the scent take turns down the two. Mark anywhere outside the
+fork and it collapses back to one road. A branch nobody feeds fades and stops
+being an order, the way scent should.
+
+Your own traffic keeps a trail warm, but only to about a third: traffic holds a
+trail, marking builds one. Each colony's trail hugs its own edge of the road,
 so you can always see whose is whose.
 
 **Wildlife** wanders in every 55 seconds or so: a snail, a caterpillar, a pillbug.
@@ -234,16 +250,26 @@ Neither colony owns it, both can kill it, and whoever lands the most damage gets
 150 to 300 sugar. It is worth breaking off a push for.
 
 **Nothing lasts forever.** At 8:00 both nests start bleeding 2/second, so a match
-between two turtles still ends. At 12:00 whoever has more nest left wins.
+between two turtles still ends. At 12:00 whoever has more nest left wins. A
+free-for-all is a sequence of eliminations rather than one fight, so it bleeds
+earlier and harder: 6:00, at 3/second.
+
+**In a free-for-all, finishing pays.** Landing the killing bite on a nest hands
+your colony 220 sugar. Softening a neighbour is a gift to the colony on their far
+side; the tribute makes seeing it through your prize rather than their favour.
 
 **The board remembers.** Roads darken where ants actually walked, so by the end you
 can see at a glance which road each colony committed to, and debris and scorch stay
 where the fighting and the nest bites happened. Pure decoration: it changes nothing
 about how anything moves.
 
-**Say something.** Six fixed emotes go over the socket mid-match and pop up over your
-nest. It is a fixed list sent by index rather than a chat box, so there is no free
-text to moderate and nothing a client can put on your screen that is not in the list.
+**Say something.** Nine fixed emotes go over the socket mid-match. It is a fixed
+list sent by index rather than a chat box, so there is no free text to moderate and
+nothing a client can put on your screen that is not in the list. The last three are
+signals: Truce?, You are next, The truce is off. In a free-for-all they are
+delivered, not broadcast into the air: the signal lands on the nest of whichever
+neighbour your aimed road runs to, in your colour, so a threat arrives from
+somebody in particular.
 
 **Colony colours.** Pick one of six before the match and it sticks between matches.
 Not decoration either: both colonies field the same nine species, so the colour is
@@ -286,8 +312,8 @@ the first version drew and it read as a coin.
 
 ## Controls
 
-The rail down the left edge is three chips, one per road, stacked to match the
-roads on the board. Each shows who is standing in that lane right now: your
+The rail down the left edge is one chip per road, stacked to match the board,
+three on a duelling board and four on a ring, plus the Follow-the-trail chip. Each shows who is standing in that lane right now: your
 colour growing from the left, theirs from the right. Pick a road there, then buy;
 everything you buy goes down the road you have selected.
 
@@ -297,9 +323,11 @@ everything you buy goes down the road you have selected.
 | `1` to `5` | Send that raider down the aimed road |
 | `Shift` + `1` to `5` | Build that defender on the free pad nearest the aimed road |
 | `Q` `W` `E` | Rally, Acid Rain, Barricade |
-| `R` | Lay a scent trail on the aimed road |
+| `R` | Lay a scent trail on the aimed road, moving your one trail there |
+| `T` | Aim at the trail itself: everything you buy follows the scent |
+| `F` | Fork the trail toward the aimed road, splitting the colony |
 | `X` | Send your queen out, or call her onto the aimed road |
-| `C` | Her ability, once she is level 3 |
+| `C` | Her ability, once she reaches level 2 |
 | Click a pad | Build there, or sell what is on it |
 | Click the board | Aim at the nearest road |
 | `M` | Mute |

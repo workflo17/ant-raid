@@ -787,7 +787,7 @@ input {
 
 /* ───────────────────────────── overlays ───────────────────────────── */
 
-/* say-something bar: six fixed things, tucked out of the way of the board */
+/* say-something bar: the fixed emote list, tucked out of the way of the board */
 .emotebar {
   position: absolute; left: 10px; top: 10px;
   display: flex; gap: 4px; flex-wrap: wrap; max-width: 40vw;

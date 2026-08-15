@@ -176,7 +176,8 @@ export class Hud {
     mk.className = 'pw mark';
     mk.type = 'button';
     mk.title = `Lay a scent trail on the aimed road, ${PHEROMONE.cost} sugar. `
-      + `Your ants move faster along it, your own traffic keeps it warm, and it fades if you walk away.`;
+      + `Your ants move faster along it, and a colony holds ONE trail: marking a new road `
+      + `pulls the old one back down. Traffic keeps a trail warm; walking away lets it fade.`;
     mk.setAttribute('aria-label', `Lay a scent trail, ${PHEROMONE.cost} sugar`);
     mk.innerHTML = `<span class="glyph" aria-hidden="true">≋</span>` +
       `<span class="pk">${this.keys ? 'R' : 'Trail'}</span>` +
@@ -424,11 +425,15 @@ export class Hud {
         fcd.classList.toggle('hidden', cd <= 0);
         if (cd > 0) fcd.textContent = cd.toFixed(1);
       }
-      // the trail chip fades with the scent: no trail, nothing to follow
+      // the trail chip fades with the scent, and says when the colony is split:
+      // no trail means nothing to follow, and a fork is worth naming because
+      // sends aimed here will take turns rather than all walking one road
       if (this.trailChip) {
+        const branches = this.lanes.filter((L) => (mine[L.id] || 0) > PHEROMONE.reinforceCap);
         const strongest = Math.max(0, ...this.lanes.map((L) => mine[L.id] || 0));
-        const live = strongest > PHEROMONE.reinforceCap;
-        this.trailChip.classList.toggle('broke', !live);
+        this.trailChip.classList.toggle('broke', !branches.length);
+        this.trailChip.querySelector('.lane-name').textContent =
+          branches.length > 1 ? 'Follow the fork' : 'Follow the trail';
         this.trailChip.querySelector('.lane-scent i').style.width = `${strongest * 100}%`;
       }
     }
