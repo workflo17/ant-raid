@@ -52,6 +52,21 @@ const MAP_THEMES = {
     lead:  [0, null, 4, null, null, 2, null, null, 5, null, null, 4, null, null, 2, null],
     leadB: [7, null, 5, null, 4, null, null, 2, 4, null, 5, null, 1, null, null, null],
   },
+  orchard: { // bright and plucky, fruit coming down on the offbeats
+    rootOff: 5, bpm: 116, ambient: 'birds',
+    lead:  [0, null, 4, 2, null, 4, null, 5, null, 4, 2, null, 1, null, 2, null],
+    leadB: [7, 5, null, 4, null, 2, 4, null, 5, null, 7, null, 4, null, 2, 1],
+  },
+  brookbed: { // low and sparse, something walking the dry bed between the notes
+    rootOff: -5, bpm: 100, minor: true, ambient: 'breeze',
+    lead:  [0, null, null, null, 1, null, 0, null, null, null, 3, null, 1, null, null, null],
+    leadB: [4, null, null, 3, null, null, 1, null, 0, null, null, 1, null, null, 0, null],
+  },
+  wheel: { // the free-for-all: driving minor, no colony resting long
+    rootOff: 7, bpm: 118, minor: true, ambient: 'crickets',
+    lead:  [0, 0, null, 2, null, 3, null, 2, 4, null, 3, 2, null, 1, null, null],
+    leadB: [5, null, 4, null, 5, 7, null, 5, 4, null, 2, null, 1, 2, null, null],
+  },
 };
 let theme = MAP_THEMES.picnic;
 let themeId = 'picnic';

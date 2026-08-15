@@ -50,7 +50,7 @@ export function buildView(map, cur, prev, a = 1) {
 
   const defs = cur.d.map(([id, t, team, pad, hp, atk, owner]) => {
     const spot = map.pads[team][pad];
-    return { id, k: DEFENDER_IDS[t], team, pad, hp, atk, owner, x: spot.x, y: spot.y };
+    return { id, k: DEFENDER_IDS[t], team, pad, hp, atk, owner, x: spot.x, y: spot.y, face: spot.face ?? 0 };
   });
 
   const walls = cur.w.map(([id, team, lane, d, hp]) => {

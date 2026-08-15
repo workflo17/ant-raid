@@ -18,7 +18,7 @@ import { setMapTheme, setIntensity, ensureStarted, setMusicMuted } from './music
 import { distToPath, dist } from '../shared/util.js';
 import { buildMap, mapList, DEFAULT_MAP } from '../shared/map.js';
 import { COLONY_COLORS, cleanColor, resolveColors, TUNING } from '../shared/data/board.js';
-import { teamTint, setColonyColors } from './colors.js';
+import { teamTint, setColonyColors, shade } from './colors.js';
 import { RAIDERS, DEFENDERS, DEFENDER_IDS, RAIDER_IDS, LOADOUT_SIZE, DEFAULT_LOADOUT, cleanLoadout } from '../shared/data/units.js';
 import { QUEENS, QUEEN_IDS, HERO, cleanQueen } from '../shared/data/heroes.js';
 import { AiBrain, botLoadout, botQueen } from '../shared/ai.js';
@@ -716,10 +716,15 @@ function wireDriver(seatSpecs, netIndex) {
   if (full) for (const h of huds) h.padIdx = full.players.find((p) => p.i === h.meIndex)?.pads || [];
 
   show('game');
-  // the audio module keeps its own theme names from Grubs TD; give each board a
-  // different one so the two worlds do not share a single tune
-  const TUNE = { litter: 'garden', gully: 'bath', galleries: 'kitchen', deep: 'nightporch' };
-  try { setMapTheme(TUNE[MAP?.id] || 'picnic'); setIntensity(1); } catch { /* audio off */ }
+  // the audio module keeps its own theme names from Grubs TD; every board gets
+  // its own tune, and every ring shares the driving one. Three boards and all
+  // the rings used to fall through to the picnic fallback, so half the game
+  // played the same song.
+  const TUNE = {
+    litter: 'garden', gully: 'bath', galleries: 'kitchen', deep: 'nightporch',
+    windfall: 'orchard', brook: 'brookbed', nursery: 'flowerbed',
+  };
+  try { setMapTheme(TUNE[MAP?.id] || (MAP?.kind === 'ring' ? 'wheel' : 'picnic')); setIntensity(1); } catch { /* audio off */ }
   wireBoardInput(cv);
   lastT = performance.now();
   loop(lastT);
@@ -1218,9 +1223,12 @@ function showResult(m) {
   $('#verdict-why').textContent = m.why;
   if (won) sfx.win?.(); else sfx.deny?.();
 
+  // the colony's ACTUAL colour, inline: the old t0/t1 classes coloured two
+  // teams in ember and frost whatever anyone was wearing, and teams two to
+  // five in nothing at all
   const rows = m.stats.map((s) => `
-    <tr class="t${s.team}">
-      <td>${escapeHtml(s.name)}${s.bot ? ' (bot)' : ''}</td>
+    <tr>
+      <td style="color:${shade(teamTint(s.team).accent, 0.34)}">${escapeHtml(s.name)}${s.bot ? ' (bot)' : ''}</td>
       <td>${s.sent}</td><td>${s.kills}</td><td>${s.dealt}</td><td>${s.spent}</td>
     </tr>`).join('');
   $('#scoretable').innerHTML =

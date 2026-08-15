@@ -65,7 +65,7 @@ export function applyCssVars(mine = 0) {
 export const colonyCount = () => active.length;
 
 /** Darken a hex by mixing it toward black, for the -dark pair of each role. */
-function shade(hex, amount) {
+export function shade(hex, amount) {
   const n = parseInt(hex.slice(1), 16);
   const r = Math.round(((n >> 16) & 255) * (1 - amount));
   const g = Math.round(((n >> 8) & 255) * (1 - amount));

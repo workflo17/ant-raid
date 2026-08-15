@@ -70,15 +70,40 @@ export function buildMap(id = DEFAULT_MAP) {
     return Math.round(mul * 1000) / 1000;
   };
 
+  // Which way a defender standing on this pad faces: along its road, toward
+  // the enemy. The renderer used to guess `team 0 east, team 1 west`, which is
+  // only a direction on a board with two colonies facing each other; on a ring
+  // the northern colonies' guards stood sideways to their own road.
+  const padFace = (lane, x, y, team) => {
+    const path = lanes[lane].path;
+    const probe = { x: 0, y: 0, angle: 0, seg: 0 };
+    let bestD = 0, best = Infinity;
+    for (let d = 0; d <= path.length; d += 8) {
+      posAt(path, d, probe);
+      const dd = dist(x, y, probe.x, probe.y);
+      if (dd < best) { best = dd; bestD = d; }
+    }
+    posAt(path, bestD, probe);
+    const e = lanes[lane].ends;
+    const dir = e[1] === team ? -1 : 1;   // walk toward the far end from home
+    return dir > 0 ? probe.angle : probe.angle + Math.PI;
+  };
+
   // A duelling board authors its pads once and mirrors them. A ring board has
   // already placed every colony's pads by rotating colony 0's, so they are taken
   // as they are and only re-indexed per colony.
   const mkPads = (team) => (ring
     ? def.pads.filter((p) => p.team === team)
-      .map((p, i) => ({ i, lane: p.lane, x: p.x, y: p.y, team, rangeMul: padRangeMul(p.x, p.y) }))
+      .map((p, i) => ({
+        i, lane: p.lane, x: p.x, y: p.y, team,
+        rangeMul: padRangeMul(p.x, p.y), face: padFace(p.lane, p.x, p.y, team),
+      }))
     : def.pads.map((p, i) => {
       const x = team === 0 ? p.x : mirrorX(p.x);
-      return { i, lane: p.lane, x, y: p.y, team, rangeMul: padRangeMul(x, p.y) };
+      return {
+        i, lane: p.lane, x, y: p.y, team,
+        rangeMul: padRangeMul(x, p.y), face: padFace(p.lane, x, p.y, team),
+      };
     }));
 
   const teams = def.teams ?? 2;

@@ -56,6 +56,11 @@ for (const M of MAPS) {
       assert.equal(b.y, a.y);
       assert.equal(b.lane, a.lane);
       assert.equal(b.rangeMul, a.rangeMul, 'one side of the board sees further');
+      // and their guards face mirrored ways: cos flips across the mirror, sin
+      // holds, or one colony's defenders stand at a different angle to their
+      // road than the other's
+      assert.ok(Math.abs(Math.cos(b.face) + Math.cos(a.face)) < 1e-6, `pad ${i} facing x`);
+      assert.ok(Math.abs(Math.sin(b.face) - Math.sin(a.face)) < 1e-6, `pad ${i} facing y`);
     }
   });
 

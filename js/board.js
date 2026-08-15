@@ -731,7 +731,9 @@ function drawDefenders(view) {
     }
     teamRing(d.x, d.y, d.team, 15);
     drawAnt(c, def.species, tinted(def, d.team), {
-      x: d.x, y: d.y, angle: d.team === 0 ? 0 : Math.PI,
+      // along its own road, toward the enemy: `team 0 east, team 1 west` was
+      // only a direction on a duelling board
+      x: d.x, y: d.y, angle: d.face ?? (d.team === 0 ? 0 : Math.PI),
       scale: def.scale, time, bob: d.id * 1.7, flash: d.atk ? 0.09 : 0,
     });
     drawHpBar(c, d.x, d.y - 30, 34, d.hp / def.hp);
@@ -972,9 +974,15 @@ function drawAim(lane, team, view) {
   c.strokeStyle = teamTint(team).accent;
   c.lineWidth = 5;
   c.setLineDash([14, 10]);
-  c.lineDashOffset = -time * 40 * (team === 0 ? 1 : -1);
   c.lineCap = 'round'; c.lineJoin = 'round';
-  for (const l of lanes) strokePts(c, MAP.lanes[l].points);
+  for (const l of lanes) {
+    // the dashes march the way YOUR ants will walk this road. `team 0
+    // forwards, everyone else backwards` was only true in a duel; on a ring a
+    // colony walks out forwards on some roads and backwards on others.
+    const dir = MAP.laneSideFor ? (MAP.laneSideFor(l, team) || 1) : 1;
+    c.lineDashOffset = -time * 40 * dir;
+    strokePts(c, MAP.lanes[l].points);
+  }
   c.restore();
 }
 
@@ -982,7 +990,7 @@ function drawAim(lane, team, view) {
 
 const FX = {
   HIT: 0, POP: 1, BLAST: 2, SHOOT: 3, NEST: 4, CAST: 5, BUILD: 6, WALL: 7,
-  BOUNTY: 8, CLAIM: 9, LEVEL: 10, ABILITY: 11, QUEEN: 12, MARK: 13,
+  BOUNTY: 8, CLAIM: 9, LEVEL: 10, ABILITY: 11, QUEEN: 12, MARK: 13, FALL: 14,
 };
 
 /** Turn the sim's fx list into particles and sound. Called once per snapshot. */
@@ -1089,6 +1097,23 @@ export function playFx(list, sfx) {
         textPop(x, y - 26, `+${arg}`, '#ffd166', 24);
         sfx?.fanfare();
         break;
+
+      case FX.FALL: {
+        // A COLONY IS OUT. The sim has announced this since the free-for-all
+        // landed and the client sat through it in silence: kind 14 was not in
+        // the switch, so the biggest moment a ring has played nothing at all.
+        const T = teamTint(arg);
+        explosionFx(x, y, 52);
+        ring(x, y, T?.ring || '#ffd166', 46, 600, 0.6);
+        ring(x, y, '#ffffff', 24, 380, 0.4);
+        burstChunks(x, y, '#6b4a26', 14);
+        stampScorch(x, y, 50);
+        stampDebris(x, y, 60, 12, '#1c1006');
+        textPop(x, y - 64, 'the colony has fallen', T?.ring || '#ffd166', 17);
+        kick(8);
+        sfx?.boom();
+        break;
+      }
     }
   }
 }

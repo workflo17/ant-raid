@@ -1,6 +1,15 @@
 // Bot-vs-bot tuning harness. Runs full matches headlessly and reports how they
 // ended, so balance changes can be judged on outcomes instead of vibes.
-//   node tools/balance.js [matches] [levelA] [levelB] [map|all]
+//   node tools/balance.js [matches] [levelA] [levelB] [map|all] [seedBase]
+//
+// BELIEVE NO WIN SPLIT FROM ONE SEED FAMILY. Every seed pins both brains'
+// random streams, matches are near-deterministic per seed (tools/seatprobe.js
+// measured 0-1 winners in 40 changing under a think-order flip), so one family
+// is 40 coin flips FROZEN, not 40 samples: the default family froze 31-9 on
+// gully while two fresh families came back 22-18 and 18-22. Pool families
+// (vary seedBase) before reading a lean as real, and when one looks real, run
+// tools/seatprobe.js to say whether it follows the seat, the brain, or the
+// family.
 
 import { Sim } from '../shared/sim.js';
 import { AiBrain } from '../shared/ai.js';
@@ -12,6 +21,7 @@ const N = Number(process.argv[2] || 12);
 const LA = process.argv[3] || 'normal';
 const LB = process.argv[4] || 'normal';
 const MAP = process.argv[5] || 'picnic';
+const SEED_BASE = Number(process.argv[6] || 1000);
 
 function playMatch(seed, map) {
   const sim = new Sim({
@@ -83,7 +93,7 @@ function playMatch(seed, map) {
 
 const maps = MAP === 'all' ? MAP_IDS : [MAP];
 const results = [];
-for (const m of maps) for (let i = 0; i < N; i++) results.push({ ...playMatch(1000 + i * 7, m), map: m });
+for (const m of maps) for (let i = 0; i < N; i++) results.push({ ...playMatch(SEED_BASE + i * 7, m), map: m });
 
 const wins = [0, 0, 0];
 let totalT = 0, peak = 0;
