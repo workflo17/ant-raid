@@ -789,7 +789,11 @@ input {
 
 /* say-something bar: the fixed emote list, tucked out of the way of the board */
 .emotebar {
-  position: absolute; left: 10px; top: 10px;
+  /* below the nest bar, NOT beside it: at top 10 the pills sat on the first
+     colony's readout on every screen, and on a six-colony board they buried
+     two whole colonies. Found by screenshot, not by geometry probes, because
+     the probes only ever measured the mobile layout. */
+  position: absolute; left: 10px; top: 56px;
   display: flex; gap: 4px; flex-wrap: wrap; max-width: 40vw;
   z-index: 4;
 }
@@ -806,7 +810,7 @@ input {
 .em:hover { opacity: 1; transform: translateY(-1px); }
 .em .eg { font-size: 13px; line-height: 1; }
 @media (max-width: 760px) {
-  .emotebar { max-width: 58vw; gap: 3px; }
+  .emotebar { max-width: 58vw; gap: 3px; top: 58px; }
   .em .et { display: none; }
   .em { padding: 4px 7px; }
 }
@@ -965,7 +969,6 @@ input {
    40px, the practical floor for a thumb. The band between the nest bar and
    the board is empty on a phone, so the emotes live there. */
 @media (max-width: 760px) {
-  .emotebar { top: 58px; }
   .em { padding: 8px 9px; min-height: 36px; }
   .em .eg { font-size: 16px; }
   .up { min-height: 40px; }
