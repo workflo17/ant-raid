@@ -240,6 +240,8 @@ export class NetDriver extends Emitter {
   setLoadout(roster, queen, color) { this.tx({ t: 'loadout', roster, queen, color }); }
   setMode(mode) { this.tx({ t: 'mode', mode }); }
   setMap(map) { this.tx({ t: 'mode', map }); }
+  /** Fill the empty chairs with bot colonies, or send them home. Host only. */
+  setBots(fill) { this.tx({ t: 'bots', fill: !!fill }); }
   startMatch() { this.tx({ t: 'start' }); }
   rematch() { this.tx({ t: 'rematch' }); }
   emote(seat, e, at) { this.tx(Number.isInteger(at) ? { t: 'emote', e, at } : { t: 'emote', e }); }

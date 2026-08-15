@@ -465,6 +465,11 @@ input {
 .seat.t1 .dot { background: var(--frost); }
 .seat .tag { margin-left: auto; font-size: 12px; opacity: .6; font-weight: 700; }
 .seat.empty { opacity: .5; border-style: dashed; }
+/* a filled chair is a real colony, so it is not dimmed like an empty one; the
+   dotted edge is the whole tell, and the tag says the word */
+.seat.is-bot { border-style: dotted; }
+.seat.is-bot .tag { opacity: .75; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+.botfill { display: grid; gap: 6px; justify-items: center; margin: 2px 0 10px; }
 .mode-block { display: grid; gap: 6px; justify-items: center; margin: 6px 0 4px; }
 
 /* ───────────────────────────── game shell ───────────────────────────── */

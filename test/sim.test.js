@@ -338,6 +338,37 @@ test('sugar accrues at the advertised rate and purchases deduct exactly', () => 
   assert.equal(Math.round(before - p.sugar), RAIDERS.trapjaw.cost);
 });
 
+test('a bot filling a lobby chair earns a human income, handicaps are the opponent\'s', () => {
+  // a filled chair: flagged as a bot, but nothing the sim spawned
+  const filled = new Sim({
+    mode: 'versus', seed: 7, wildlife: false,
+    players: [{ id: 'A', name: 'A', team: 0 }, { id: 'B', name: 'B', team: 1, bot: true }],
+  });
+  const human = filled.playerById('A'), bot = filled.playerById('B');
+  assert.equal(bot.bot, true, 'the seat should still know it is a bot');
+  assert.equal(filled.incomeRate(bot), filled.incomeRate(human),
+    'a filled chair must play on the same income as the person next to it');
+
+  // the co-op opponent, which the sim DID spawn, keeps its handicap
+  const coop = new Sim({
+    mode: 'coop', seed: 7, wildlife: false,
+    players: [{ id: 'A', name: 'A', team: 0 }],
+    ai: { team: 1, difficulty: 'coop' },
+  });
+  const foe = coop.playerById('@ai');
+  assert.ok(coop.incomeRate(foe) > coop.incomeRate(coop.playerById('A')) * 2,
+    'the co-op opponent should still be handicapped up');
+
+  // and a bot team-mate in that same co-op match does NOT inherit it
+  const withMate = new Sim({
+    mode: 'coop', seed: 7, wildlife: false,
+    players: [{ id: 'A', name: 'A', team: 0 }, { id: 'M', name: 'M', team: 0, bot: true }],
+    ai: { team: 1, difficulty: 'coop' },
+  });
+  assert.equal(withMate.incomeRate(withMate.playerById('M')), withMate.incomeRate(withMate.playerById('A')),
+    'a bot team-mate must not be paid like the opponent');
+});
+
 test('a honeypot adds its income to the colony that built it, and nobody else', () => {
   const sim = duel();
   const a = sim.playerById('A'), b = sim.playerById('B');

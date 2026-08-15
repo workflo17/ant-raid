@@ -172,6 +172,13 @@
 
     <ul class="seats" id="seats"></ul>
 
+    <!-- Nobody should have to round up five friends to see a six-colony
+         board. The host fills the rest with bot colonies and starts. -->
+    <div class="botfill hidden" id="botfill">
+      <button class="pill quiet" id="fill-bots">Fill the empty chairs with bots</button>
+      <p class="share-note" id="botfill-note"></p>
+    </div>
+
     <div class="board-pick">
       <span class="row-label">What you pack <em id="lobby-pack-count">0 of 5</em></span>
       <div class="packs" id="lobby-pack-strip"></div>

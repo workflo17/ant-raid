@@ -305,7 +305,14 @@ export class Sim {
     // a Honeyqueen is a walking honeypot, and stops paying the moment she falls
     const q = QUEENS[p.queen];
     if (q.income && this.heroOf(p.index)) r += q.income;
-    if (p.bot) {
+    // THE HANDICAP BELONGS TO THE OPPONENT THIS SIM SPAWNED, not to every bot
+    // on the board. It used to key off `p.bot` alone, which was the same thing
+    // back when the only bot was the one the sim made. Now a lobby can fill its
+    // empty chairs with bot colonies, and in co-op that test would have handed
+    // a bot TEAM-MATE the opponent's 2.9x, nearly three times the purse of the
+    // person sitting next to them. A filled chair is an ordinary colony: human
+    // income, which is also exactly what tools/ffa.js measures.
+    if (p.bot && p === this.aiPlayer) {
       const key = this.mode === 'coop' ? 'coop' : (this.ai?.difficulty || 'normal');
       r *= TUNING.aiIncomeMul[key] ?? 1;
     }

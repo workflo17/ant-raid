@@ -594,11 +594,16 @@ function renderLobby(m) {
     const packed = (p?.roster || []).map((id) =>
       `<i style="background:${RAIDERS[id].color}" title="${RAIDERS[id].name}"></i>`).join('');
     const qn = p?.queen && QUEENS[p.queen] ? QUEENS[p.queen].name : '';
+    if (p?.bot) li.classList.add('is-bot');
+    // A bot is never "away": it has no socket and would otherwise wear the
+    // label of somebody whose connection dropped. It says what it is instead.
+    const tag = p?.bot ? 'bot'
+      : `${p?.pid === d.pid ? 'you' : ''}${p?.connected ? '' : ' · away'}`;
     li.innerHTML = p
       ? `<span class="dot"></span><span>${escapeHtml(p.name)}</span>` +
         `<span class="packed" aria-label="packed: ${(p.roster || []).map((id) => RAIDERS[id].name).join(', ')}">${packed}</span>` +
         (qn ? `<span class="qtag">${qn}</span>` : '') +
-        `<span class="tag">${p.pid === d.pid ? 'you' : ''}${p.connected ? '' : ' · away'}</span>`
+        `<span class="tag">${tag}</span>`
       : `<span class="dot"></span><span>${capacity > 2 ? 'Empty chair' : 'Waiting for a second colony…'}</span>`;
     seats.appendChild(li);
   }
@@ -615,6 +620,23 @@ function renderLobby(m) {
   });
   buildPackStrip($('#lobby-pack-strip'), $('#lobby-pack-count'), { onPick: (id) => togglePack(id, redrawPacks) });
   buildQueenStrip($('#lobby-queen-strip'), {});
+  // ── filling the empty chairs ──
+  // Offered to the host whenever a chair is empty, and offered as an undo once
+  // bots are in. A guest never sees it: they cannot act on it, and a dead
+  // control is worse than no control.
+  const empty = m?.empty ?? Math.max(0, capacity - players.length);
+  const bots = m?.bots ?? players.filter((p) => p.bot).length;
+  const fill = $('#botfill');
+  const fillBtn = $('#fill-bots');
+  fill.classList.toggle('hidden', !isHost || (!empty && !bots));
+  fillBtn.textContent = empty
+    ? (empty === 1 ? 'Fill the last chair with a bot' : `Fill ${empty} empty chairs with bots`)
+    : 'Send the bots home';
+  fillBtn.dataset.fill = empty ? '1' : '';
+  $('#botfill-note').textContent = bots
+    ? `${bots} ${bots === 1 ? 'colony is' : 'colonies are'} played by the game. Anyone who joins takes a bot's chair.`
+    : 'They play their own colonies, on the same income you get.';
+
   const btn = $('#lobby-start');
   btn.disabled = !isHost || !m?.canStart;
   const need = Math.max(0, (m?.minSeats ?? capacity) - players.length);
@@ -627,6 +649,7 @@ function renderLobby(m) {
 document.querySelectorAll('[data-mode]').forEach((b) => {
   b.onclick = () => driver?.setMode?.(b.dataset.mode);
 });
+$('#fill-bots').onclick = (e) => driver?.setBots?.(e.currentTarget.dataset.fill === '1');
 $('#lobby-start').onclick = () => driver.startMatch();
 $('#lobby-leave').onclick = () => leave();
 $('#copy-link').onclick = async () => {

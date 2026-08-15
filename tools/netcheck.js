@@ -452,6 +452,98 @@ async function caseLobbyLeave() {
   closeAll([], host, b, c, d);
 }
 
+// -------------------------------------------------- case: chairs filled by bots
+
+/**
+ * One person opens a six-colony room and fills the rest with bots.
+ *
+ * The assertions that matter are not "the button worked". They are the four
+ * ways a bot seat could be mistaken for a human one:
+ *
+ *   a filled chair must not forfeit. It has no socket, so it looks exactly
+ *   like somebody who walked out, and the abandon timer would knock its nest
+ *   flat in the middle of the match it was filled to make possible. This is
+ *   why the case waits out the window (AR_ABANDON_AFTER=8000 makes it quick)
+ *   and then reads the nests.
+ *
+ *   a late human must get in, taking a bot's chair rather than the room's
+ *   "full" message.
+ *
+ *   the host must still be the host, when seat order now contains sockets
+ *   that are null.
+ *
+ *   and the match must actually be played by them: bots that sit there are
+ *   worse than empty chairs, so the case reads the board for their ants.
+ */
+async function caseBotFill() {
+  const host = client('host');
+  await host.ready;
+  host.tx({ t: 'create', name: NAMES[0], mode: 'ffa' });
+  await until('the host to get a room code', () => host.code && host.lobby);
+  check('one person alone cannot start a free-for-all', host.lobby.canStart === false);
+
+  host.tx({ t: 'bots', fill: true });
+  await until('the chairs to fill', () => host.lobby.players.length === 6, 8000);
+  const filled = host.lobby.players;
+  check('every chair is taken', filled.length === 6, `${filled.length} seats`);
+  check('five of them by bots', filled.filter((p) => p.bot).length === 5,
+    `${filled.filter((p) => p.bot).length} bots`);
+  check('the host is not one of them', filled[0].bot === false);
+  check('and the room can start now', host.lobby.canStart === true);
+  check('the bots are named, not numbered', filled.filter((p) => p.bot).every((p) => p.name && !/^Colony/.test(p.name)),
+    filled.map((p) => p.name).join(', '));
+  check('no two colonies share a name', new Set(filled.map((p) => p.name)).size === 6,
+    filled.map((p) => p.name).join(', '));
+
+  // a late human takes a bot's chair rather than bouncing off a full room
+  const late = client('late');
+  await late.ready;
+  late.tx({ t: 'join', code: host.code, name: NAMES[1] });
+  await until('the late arrival to be seated', () => host.lobby.players.filter((p) => !p.bot).length === 2, 8000);
+  check('a late human is let in, and a bot gives up the chair', late.errors.length === 0,
+    late.errors[0] || '');
+  check('the room is still exactly full', host.lobby.players.length === 6);
+  check('now with four bots', host.lobby.players.filter((p) => p.bot).length === 4);
+
+  // and the host is still the host, with null sockets in the seat list
+  host.tx({ t: 'start' });
+  await until('the match to start', () => host.started || host.errors.length, 8000);
+  check('the host can still start a room with bots in it', !!host.started,
+    host.errors.slice(-1)[0] || '');
+  const full = host.full;
+  check('the board was sized for the filled room', full.map === 'ring6', full.map);
+  check('the sim is running six colonies', full.teams === 6, `teams ${full.teams}`);
+  check('the bots are flagged as bots on the wire',
+    full.players.filter((p) => p.bot).length === 4,
+    `${full.players.filter((p) => p.bot).length} flagged`);
+
+  // THE ONE THAT MATTERS: sit through the abandon window and see whether the
+  // filled colonies are still standing.
+  const wait_for = ABANDON + 6000;
+  console.log(`  waiting out the abandon window (${Math.round(wait_for / 1000)}s) to see if the bots forfeit`);
+  await wait(wait_for);
+  const snap = host.lastSnap;
+  const botTeams = full.players.filter((p) => p.bot).map((p) => p.team);
+  const flattened = botTeams.filter((t) => snap.hp[t] <= 0);
+  check('a filled chair does not forfeit like a no-show',
+    flattened.length === 0,
+    `colonies ${flattened.join(',')} were knocked out by the abandon timer`);
+  check('and the match is still running', !host.over, host.over?.why || '');
+
+  // and they play: their ants are on the board
+  const botAnts = snap.u.filter((u) => botTeams.includes(u[2])).length;
+  check('the bots actually raid', botAnts > 0, 'no bot ants on the board');
+  const botSpend = botTeams.filter((t) => {
+    const p = full.players.find((x) => x.team === t);
+    return snap.p[p.i] && snap.p[p.i].s < 3000;
+  }).length;
+  check('and they spend rather than hoard', botSpend === botTeams.length,
+    'a bot banked its whole purse');
+  console.log(`  ${botAnts} bot ants on the board after ${Math.round(wait_for / 1000)}s`);
+
+  closeAll([], host, late);
+}
+
 // ----------------------------------------------------------- case: the forfeit
 
 /**
@@ -738,6 +830,7 @@ async function ffa() {
   const cases = [
     ['the lobby mode switch', caseLobby],
     ['a seat that leaves the lobby', caseLobbyLeave],
+    ['chairs filled by bots', caseBotFill],
     ['a colony that walks out and stays out', () => caseForfeit(SEATS)],
     ['a colony that drops and comes back', () => caseReconnect(SEATS)],
   ];

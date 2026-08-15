@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 
 import { Sim } from './shared/sim.js';
-import { AiBrain } from './shared/ai.js';
+import { AiBrain, botLoadout, botQueen } from './shared/ai.js';
 import { MAP_IDS, DEFAULT_MAP, boardForTeams } from './shared/map.js';
 import { cleanLoadout } from './shared/data/units.js';
 import { cleanQueen } from './shared/data/heroes.js';
@@ -225,6 +225,16 @@ const MODES = {
 };
 const cleanMode = (m) => (Object.hasOwn(MODES, m) ? m : 'versus');
 
+/**
+ * Names for the colonies nobody is sitting in.
+ *
+ * They are named rather than numbered because a free-for-all is a table of
+ * neighbours: "Cinder took the aphids" is a sentence about somebody, and
+ * "Colony 4 took the aphids" is a line of telemetry. The lobby and the result
+ * table both flag them as bots, so the name is flavour and never a disguise.
+ */
+const BOT_NAMES = ['Cinder', 'Bramble', 'Thistle', 'Marrow', 'Sorrel', 'Ash'];
+
 class Room {
   constructor(code, mode, difficulty, map) {
     this.code = code;
@@ -264,12 +274,37 @@ class Room {
   }
   get started() { return !!this.sim; }
 
-  seatFor(ws) { return this.seats.find((s) => s.ws === ws); }
+  /**
+   * The seat that runs the room: the first HUMAN, not the first seat.
+   *
+   * Bots hold chairs but never decisions. Reading `seats[0]` would hand the
+   * room to a bot the moment the host walked out of a lobby with bots in it,
+   * and since a bot has no socket, `seats[0].ws !== ws` is true for every
+   * human alive: nobody could set the mode or start, and the room would be
+   * quietly dead with people sitting in it.
+   */
+  get hostSeat() { return this.seats.find((s) => !s.bot); }
+  isHost(ws) { return !!ws && this.hostSeat?.ws === ws; }
+  get humans() { return this.seats.filter((s) => !s.bot).length; }
+  get botCount() { return this.seats.filter((s) => s.bot).length; }
+
+  seatFor(ws) {
+    // a bot seat has ws null, and a closing socket can arrive here as null too:
+    // without the guard, `s.ws === ws` would hand a bot's chair to whoever
+    // hung up
+    if (!ws) return undefined;
+    return this.seats.find((s) => s.ws === ws);
+  }
 
   /** In co-op both humans share team 0 and face the bot; in versus they oppose. */
   teamFor(index) { return MODES[this.mode].team(index); }
 
   add(ws, name, roster, queen, color) {
+    // A LATE HUMAN OUTRANKS A BOT. The chairs were filled so the raid could
+    // start without waiting; somebody actually turning up is the thing the
+    // waiting was for. The LAST bot goes, so every seat before it keeps its
+    // index and therefore its colony.
+    if (this.seats.length >= this.capacity && !this.started) this.dropBot();
     if (this.seats.length >= this.capacity) return null;
     const seat = {
       // Counted, never derived from seats.length. A seat that walks out of the
@@ -289,9 +324,64 @@ class Room {
     return seat;
   }
 
+  /**
+   * Fill the empty chairs with bot colonies.
+   *
+   * A bot seat is an ordinary seat with no socket. Everything downstream of
+   * `seats` keeps working because of that and not by accident: broadcast skips
+   * sockets it does not have, teamFor is still seat order, and the board is
+   * still sized by seats.length.
+   *
+   * They are NOT given an income multiplier. `Sim` only applies one when it was
+   * handed an `ai` option, which a filled room never is, so a filled seat plays
+   * on exactly a human's income. That is deliberate twice over: a seat is a
+   * seat, and bots on parity at 'normal' is precisely the configuration
+   * tools/ffa.js and tools/balance.js measure, so every balance number already
+   * recorded describes this match.
+   */
+  fillWithBots() {
+    if (this.started) return 0;
+    let added = 0;
+    while (this.seats.length < this.capacity) {
+      const taken = new Set(this.seats.map((s) => s.name));
+      const name = BOT_NAMES.find((n) => !taken.has(n)) || `Bot ${this.seats.length + 1}`;
+      this.seats.push({
+        pid: `p${this.nextPid++}`,
+        name,
+        roster: botLoadout(),
+        queen: botQueen(),
+        color: cleanColor(null, 'ember'),
+        // no socket, never connected, and flagged: the three things every
+        // guard in this file keys off
+        ws: null, connected: false, gone: 0, bot: true,
+      });
+      added++;
+    }
+    this.lastActivity = Date.now();
+    return added;
+  }
+
+  /** Take the last bot out, which is the only one whose removal moves nobody. */
+  dropBot() {
+    for (let i = this.seats.length - 1; i >= 0; i--) {
+      if (this.seats[i].bot) { this.seats.splice(i, 1); return true; }
+    }
+    return false;
+  }
+
+  clearBots() {
+    if (this.started) return 0;
+    const before = this.seats.length;
+    this.seats = this.seats.filter((s) => !s.bot);
+    this.lastActivity = Date.now();
+    return before - this.seats.length;
+  }
+
   /** Reclaim a seat whose player dropped, so a refresh does not end the match. */
   resume(ws, pid) {
-    const seat = this.seats.find((s) => s.pid === pid && !s.connected);
+    // `!s.bot`, or a client holding a stale pid could be handed a bot's colony:
+    // every bot seat matches "not connected" for the whole match
+    const seat = this.seats.find((s) => s.pid === pid && !s.connected && !s.bot);
     if (!seat) return null;
     seat.ws = ws;
     seat.connected = true;
@@ -325,6 +415,9 @@ class Room {
       players: this.seats.map((s, i) => ({
         pid: s.pid, name: s.name, team: this.teamFor(i), connected: s.connected,
         roster: s.roster, queen: s.queen,
+        // a bot never pretends to be a person: the lobby says so on the chair,
+        // and the result table says so again next to the score
+        bot: !!s.bot,
         // the colour a seat will ACTUALLY wear, clashes already resolved, so the
         // lobby shows what the match will show rather than what was asked for
         color: this.resolvedColors()[this.teamFor(i)],
@@ -332,11 +425,17 @@ class Room {
       canStart: this.seats.length >= this.minSeats,
       minSeats: this.minSeats,
       ffa: this.isFfa,
+      // what the fill button can offer: how many chairs are actually empty,
+      // and how many are already held by somebody who is not a person
+      empty: this.capacity - this.seats.length,
+      bots: this.botCount,
     };
   }
 
   start() {
     if (this.started || this.seats.length < this.minSeats) return false;
+    // a room of nothing but bots is a screensaver, not a match
+    if (!this.humans) return false;
     const colors = this.resolvedColors();
     const players = this.seats.map((s, i) => ({
       id: s.pid, name: s.name, team: this.teamFor(i),
@@ -344,7 +443,9 @@ class Room {
       // start would otherwise report itself connected in every snapshot for the
       // rest of the match, because the sim defaults the flag to true and only
       // `ws.on('close')` ever clears it, and that has already fired by then.
+      // A bot is never connected and never claims to be.
       connected: s.connected,
+      bot: !!s.bot,
       roster: s.roster, queen: s.queen, color: colors[this.teamFor(i)],
     }));
     this.sim = new Sim({
@@ -355,7 +456,13 @@ class Room {
       // co-op needs somebody to raid: the bot takes the whole other side
       ai: MODES[this.mode].bot ? { team: 1, difficulty: 'coop' } : null,
     });
+    // One brain per bot: the co-op opponent, which is a whole side the sim owns
+    // under the id '@ai', plus a brain for every filled chair, which is an
+    // ordinary player like any other and is driven by its own pid.
     this.brains = this.mode === 'coop' ? [new AiBrain(this.sim, '@ai', 'coop')] : [];
+    for (const s of this.seats) {
+      if (s.bot) this.brains.push(new AiBrain(this.sim, s.pid, this.difficulty));
+    }
     this.frame = 0;
     this.broadcast({ t: 'start', full: this.sim.fullState() });
     this.timer = setInterval(() => this.tick(), 1000 / TICK_HZ);
@@ -371,6 +478,11 @@ class Room {
     // a colony nobody is sitting in forfeits rather than standing there forever
     const now = Date.now();
     for (const s of this.seats) {
+      // A BOT IS NOT A NO-SHOW. It has no socket and is therefore never
+      // `connected`, which is exactly the shape this loop knocks out: without
+      // this line every filled chair would forfeit its nest 45 seconds into
+      // the match it was filled to make possible.
+      if (s.bot) continue;
       if (s.connected) continue;
       if (!s.gone) s.gone = now;
       if (now - s.gone <= ABANDON_AFTER || sim.over) continue;
@@ -474,7 +586,7 @@ wss.on('connection', (ws) => {
         if (!seat) return fail(ws, 'that room is full');
         ws.room = code;
         ws.pid = seat.pid;
-        r.send(ws, { t: 'seat', code, pid: seat.pid, host: r.seats[0] === seat });
+        r.send(ws, { t: 'seat', code, pid: seat.pid, host: r.hostSeat === seat });
         r.broadcast(r.lobbyState());
         if (r.started) r.send(ws, { t: 'start', full: r.sim.fullState() });
         break;
@@ -493,12 +605,17 @@ wss.on('connection', (ws) => {
 
       case 'mode': {
         if (!room || room.started) return;
-        if (room.seats[0]?.ws !== ws) return fail(ws, 'only the host sets the mode');
+        if (!room.isHost(ws)) return fail(ws, 'only the host sets the mode');
         if (m.mode) {
           const next = cleanMode(m.mode);
-          // never shrink the room below the people already in it
+          // Bots are furniture for THIS shape of room, so changing the shape
+          // clears them first. Otherwise four filled chairs would block a
+          // switch to a two-seat mode, and the message would blame the people
+          // in the room for seats nobody is sitting in.
+          if (MODES[next].seats < room.seats.length) room.clearBots();
+          // never shrink the room below the PEOPLE already in it
           if (MODES[next].seats >= room.seats.length) room.mode = next;
-          else return fail(ws, `${room.seats.length} players are already here`);
+          else return fail(ws, `${room.humans} players are already here`);
         }
         if (m.map && MAP_IDS.includes(m.map)) room.map = m.map;
         if (m.difficulty) room.difficulty = m.difficulty;
@@ -506,9 +623,23 @@ wss.on('connection', (ws) => {
         break;
       }
 
+      // Fill the empty chairs, or send the bots home again. Host only, lobby
+      // only, and it never touches a chair somebody is sitting in.
+      case 'bots': {
+        if (!room || room.started) return;
+        if (!room.isHost(ws)) return fail(ws, 'only the host fills the seats');
+        if (m.fill) {
+          if (!room.fillWithBots()) return fail(ws, 'every chair is already taken');
+        } else {
+          room.clearBots();
+        }
+        room.broadcast(room.lobbyState());
+        break;
+      }
+
       case 'start': {
         if (!room) return fail(ws, 'not in a room');
-        if (room.seats[0]?.ws !== ws) return fail(ws, 'only the host can start');
+        if (!room.isHost(ws)) return fail(ws, 'only the host can start');
         // "both" is a duel's word. A free-for-all wants three and takes six.
         if (!room.start()) {
           fail(ws, room.started ? 'the raid has already started'
@@ -572,7 +703,7 @@ wss.on('connection', (ws) => {
 
       case 'rematch': {
         if (!room || room.started) return;
-        if (room.seats[0]?.ws !== ws) return fail(ws, 'only the host can restart');
+        if (!room.isHost(ws)) return fail(ws, 'only the host can restart');
         room.start();
         break;
       }
