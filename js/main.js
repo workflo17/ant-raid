@@ -398,10 +398,13 @@ document.querySelectorAll('[data-go]').forEach((b) => {
     $('#join-row').classList.toggle('hidden', go !== 'join');
     $('#solo-row').classList.toggle('hidden', go !== 'solo');
     if (go === 'join') $('#join-code').focus();
-    if (go === 'host') hostRoom();
+    if (go === 'host') hostRoom('versus');
+    if (go === 'host-coop') hostRoom('coop');
+    if (go === 'host-pairs') hostRoom('pairs');
+    if (go === 'host-ffa') hostRoom('ffa');
     if (go === 'hotseat') {
       if (matchMedia('(max-width: 760px)').matches) {
-        toast('Hot-seat needs a keyboard. Try Solo or Play with a friend.');
+        toast('Hot-seat needs a keyboard. Try Solo or an online mode.');
         return;
       }
       startHotseat();
@@ -473,9 +476,9 @@ function net() {
   return d;
 }
 
-function hostRoom() {
+function hostRoom(mode = 'versus') {
   driver = net();
-  driver.on('open', () => driver.create(myName(), 'versus', 'normal', chosenMap, chosenPack, chosenQueen, chosenColor));
+  driver.on('open', () => driver.create(myName(), mode, 'normal', chosenMap, chosenPack, chosenQueen, chosenColor));
   show('lobby');
 }
 

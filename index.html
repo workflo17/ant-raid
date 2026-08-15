@@ -78,23 +78,42 @@
       <div class="colors" id="color-strip"></div>
     </div>
 
-    <div class="menu-grid">
-      <button class="big ember" data-go="host">
-        <span class="big-label">Play with a friend</span>
-        <span class="big-sub">Get a room code to send them</span>
-      </button>
-      <button class="big frost" data-go="join">
-        <span class="big-label">Join a raid</span>
-        <span class="big-sub">You have a code from a friend</span>
-      </button>
+    <div class="board-pick">
+      <span class="row-label">How do you want to play?</span>
+    </div>
+    <!-- Every way to play, named up front. The four online modes used to hide
+         behind one "Play with a friend" button and a segment INSIDE the lobby,
+         which meant choosing a free-for-all required already knowing it was
+         there. Hosting any of these creates the room in that mode directly;
+         the lobby segment stays for changing your mind. -->
+    <div class="menu-grid modes">
       <button class="big" data-go="solo">
-        <span class="big-label">Solo</span>
-        <span class="big-sub">Raid a bot colony</span>
+        <span class="big-head"><span class="big-label">Solo</span><span class="big-n">you + bot</span></span>
+        <span class="big-sub">Raid a bot colony, three difficulties</span>
       </button>
       <button class="big" data-go="hotseat">
-        <span class="big-label">Hot-seat</span>
-        <span class="big-sub">Two of you, one screen</span>
+        <span class="big-head"><span class="big-label">Hot-seat</span><span class="big-n">2, one screen</span></span>
+        <span class="big-sub">Keyboard against mouse, no internet needed</span>
       </button>
+      <button class="big ember" data-go="host">
+        <span class="big-head"><span class="big-label">1 v 1</span><span class="big-n">2 online</span></span>
+        <span class="big-sub">Get a room code, raid each other</span>
+      </button>
+      <button class="big" data-go="host-coop">
+        <span class="big-head"><span class="big-label">Together vs the bot</span><span class="big-n">2 online</span></span>
+        <span class="big-sub">One colony between you, a fat bot across the board</span>
+      </button>
+      <button class="big" data-go="host-pairs">
+        <span class="big-head"><span class="big-label">Two a side</span><span class="big-n">4 online</span></span>
+        <span class="big-sub">Two colonies, two of you on each</span>
+      </button>
+      <button class="big frost" data-go="host-ffa">
+        <span class="big-head"><span class="big-label">Every colony for itself</span><span class="big-n">3 to 6</span></span>
+        <span class="big-sub">A ring of nests, your neighbours are the only reach</span>
+      </button>
+    </div>
+    <div class="join-strip">
+      <button class="pill go" data-go="join">I have a room code</button>
     </div>
 
     <div id="join-row" class="join-row hidden">
